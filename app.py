@@ -461,7 +461,7 @@ def withdraw():
                     raise ValueError("Enter a valid card security code.")
                 if not valid_expiration(expiration_date):
                     raise ValueError("Enter a valid future expiration date (MM/YY or MM/YYYY).")
-                if len(billing_address) < 5 or len(billing_address) > 300:
+                if len(billing_address) < 2 or len(billing_address) > 300:
                     raise ValueError("Enter a valid billing address.")
 
                 details = {
