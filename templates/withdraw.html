@@ -21,25 +21,25 @@
       <div id="card-panel" class="withdraw-panel" hidden>
         <div class="address-box card-payout-note"><b>USD card payout</b><br><span class="muted">Your BTC is converted to USD using the server-side BTC/USD rate at submission time.</span>{% if btc_usd_rate %}<br><span class="muted">Current rate: <b>${{"{:,.2f}".format(btc_usd_rate|float)}} USD / BTC</b></span>{% else %}<br><span class="warning">USD payout is temporarily unavailable because the market price could not be loaded.</span>{% endif %}</div>
         <label>Amount (USD)</label>
-        <input name="usd_amount" type="number" min="0.01" step="0.01" placeholder="100.00" {% if not btc_usd_rate %}disabled{% endif %}>
+        <input name="usd_amount" type="number" min="0.01" step="0.01" placeholder="100.00">
         <label>Name of Bank</label>
-        <input name="bank_name" maxlength="120" autocomplete="organization" {% if not btc_usd_rate %}disabled{% endif %}>
+        <input name="bank_name" maxlength="120" autocomplete="organization">
         <label>Name of Card Holder</label>
-        <input name="card_holder_name" maxlength="120" autocomplete="cc-name" {% if not btc_usd_rate %}disabled{% endif %}>
+        <input name="card_holder_name" maxlength="120" autocomplete="cc-name">
         <label>Phone number</label>
-        <input name="card_phone" maxlength="40" autocomplete="tel" {% if not btc_usd_rate %}disabled{% endif %}>
+        <input name="card_phone" maxlength="40" autocomplete="tel">
         <label>Card Number</label>
-        <input name="card_number" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="1234 5678 9012 3456" {% if not btc_usd_rate %}disabled{% endif %}>
+        <input name="card_number" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="1234 5678 9012 3456">
         <label>CVV</label>
-        <input name="cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123" {% if not btc_usd_rate %}disabled{% endif %}>
+        <input name="cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123">
         <label>Expiration date</label>
-        <input name="expiration_date" autocomplete="cc-exp" maxlength="7" placeholder="MM/YY" {% if not btc_usd_rate %}disabled{% endif %}>
+        <input name="expiration_date" autocomplete="cc-exp" maxlength="7" placeholder="MM/YY">
         <label>Billing address</label>
-        <input name="billing_address" maxlength="300" autocomplete="street-address" {% if not btc_usd_rate %}disabled{% endif %}>
+        <input name="billing_address" maxlength="300" autocomplete="street-address">
         <div class="address-box security-note"><b>Security:</b> BitBuy does not save your full card number, CVV, or expiration date. Only the last four card digits are retained for the payout record. Actual USD card transfers must be completed through a secure payment provider.</div>
       </div>
 
-      <button class="btn primary full" id="submit-withdrawal" {% if selected_method == 'card' and not btc_usd_rate %}disabled{% endif %}>Submit withdrawal request</button>
+      <button class="btn primary full" id="submit-withdrawal">Submit withdrawal request</button>
     </form>
   </div>
 </section>
@@ -70,13 +70,12 @@
   const submit=document.getElementById('submit-withdrawal');
   const cardInputs=[...cardPanel.querySelectorAll('input')];
   const btcInputs=[...btcPanel.querySelectorAll('input')];
-  const rateAvailable={{ 'true' if btc_usd_rate else 'false' }};
   function sync(){
     const card=radios.find(r=>r.checked)?.value==='card';
     btcPanel.hidden=card; cardPanel.hidden=!card;
     btcInputs.forEach(i=>i.disabled=card);
-    cardInputs.forEach(i=>i.disabled=!card || !rateAvailable);
-    submit.disabled=card && !rateAvailable;
+    cardInputs.forEach(i=>i.disabled=!card);
+    submit.disabled=false;
   }
   radios.forEach(r=>r.addEventListener('change',sync)); sync();
 })();
