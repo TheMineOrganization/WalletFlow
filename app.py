@@ -268,6 +268,8 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN cvv VARCHAR(3)")
             if "card_last4" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN card_last4 VARCHAR(16)")
+            else:
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ALTER COLUMN card_last4 TYPE VARCHAR(16)")
             if "billing_address" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN billing_address VARCHAR(300)")
             if "payout_reference" not in withdrawal_columns:
