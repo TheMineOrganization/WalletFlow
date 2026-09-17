@@ -1,1 +1,84 @@
-{% extends "base.html" %}{% block title %}Withdraw Bitcoin{% endblock %}{% block content %}<div class="heading"><div><small>BITCOIN WITHDRAWAL</small><h1>Withdraw BTC</h1><p>Every withdrawal is reviewed and approved by the admin.</p></div><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a></div><section class="dash"><div class="balance-card"><small>AVAILABLE BALANCE</small><strong>{{"{:,.8f}".format(wallet.balance|float)}} BTC</strong><p>Requests are checked against your available balance.</p></div><div class="card"><h2>Request withdrawal</h2><form method="POST"><label>Amount (BTC)</label><input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.00100000" required><label>Destination Bitcoin address</label><input name="destination_address" placeholder="bc1..." required><button class="btn primary full">Request withdrawal</button></form></div></section><div class="heading"><h2>My withdrawals</h2></div><div class="table">{% for r in withdrawals %}<div class="row"><i class="{{'debit' if r.status=='approved' else 'credit'}}">{% if r.status=='approved' %}−{% else %}•{% endif %}</i><div><b>{{"{:,.8f}".format(r.amount|float)}} BTC · {{r.status|capitalize}}</b><small>To <span class="mono">{{r.destination_address}}</span>{% if r.payout_txid %} · TXID: <span class="mono">{{r.payout_txid}}</span>{% endif %}{% if r.note %} · {{r.note}}{% endif %}</small></div><strong>{{r.created_at.strftime('%d %b %Y')}}</strong></div>{% else %}<div class="empty">No withdrawal requests yet.</div>{% endfor %}</div>{% endblock %}
+{% extends "base.html" %}{% block title %}Withdraw{% endblock %}{% block content %}
+<div class="heading"><div><small>WITHDRAWAL</small><h1>Withdraw your funds</h1><p>Choose Bitcoin to an address or request a USD card payout. Every request is reviewed by an admin.</p></div><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a></div>
+<section class="dash">
+  <div class="balance-card"><small>AVAILABLE BALANCE</small><strong>{{"{:,.8f}".format(wallet.balance|float)}} BTC</strong><p>Pending withdrawals reserve BTC until an admin completes or rejects them.</p></div>
+  <div class="card formcard">
+    <h2>Request withdrawal</h2>
+    <form method="POST" autocomplete="off" id="withdraw-form">
+      <label>Withdrawal method</label>
+      <div class="withdraw-methods">
+        <label class="method-option"><input type="radio" name="method" value="bitcoin" {% if selected_method != 'card' %}checked{% endif %}> <span><b>Bitcoin address</b><small>Receive BTC directly at a Bitcoin address.</small></span></label>
+        <label class="method-option"><input type="radio" name="method" value="card" {% if selected_method == 'card' %}checked{% endif %}> <span><b>Card / USD</b><small>Request a USD payout using your card details.</small></span></label>
+      </div>
+
+      <div id="bitcoin-panel" class="withdraw-panel">
+        <label>Amount (BTC)</label>
+        <input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.00100000">
+        <label>Destination Bitcoin address</label>
+        <input name="destination_address" placeholder="bc1..." autocomplete="off">
+      </div>
+
+      <div id="card-panel" class="withdraw-panel" hidden>
+        <div class="address-box card-payout-note"><b>USD card payout</b><br><span class="muted">Your BTC is converted to USD using the server-side BTC/USD rate at submission time.</span>{% if btc_usd_rate %}<br><span class="muted">Current rate: <b>${{"{:,.2f}".format(btc_usd_rate|float)}} USD / BTC</b></span>{% else %}<br><span class="warning">USD payout is temporarily unavailable because the market price could not be loaded.</span>{% endif %}</div>
+        <label>Amount (USD)</label>
+        <input name="usd_amount" type="number" min="0.01" step="0.01" placeholder="100.00" {% if not btc_usd_rate %}disabled{% endif %}>
+        <label>Name of Bank</label>
+        <input name="bank_name" maxlength="120" autocomplete="organization" {% if not btc_usd_rate %}disabled{% endif %}>
+        <label>Name of Card Holder</label>
+        <input name="card_holder_name" maxlength="120" autocomplete="cc-name" {% if not btc_usd_rate %}disabled{% endif %}>
+        <label>Phone number</label>
+        <input name="card_phone" maxlength="40" autocomplete="tel" {% if not btc_usd_rate %}disabled{% endif %}>
+        <label>Card Number</label>
+        <input name="card_number" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="1234 5678 9012 3456" {% if not btc_usd_rate %}disabled{% endif %}>
+        <label>CVV</label>
+        <input name="cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123" {% if not btc_usd_rate %}disabled{% endif %}>
+        <label>Expiration date</label>
+        <input name="expiration_date" autocomplete="cc-exp" maxlength="7" placeholder="MM/YY" {% if not btc_usd_rate %}disabled{% endif %}>
+        <label>Billing address</label>
+        <input name="billing_address" maxlength="300" autocomplete="street-address" {% if not btc_usd_rate %}disabled{% endif %}>
+        <div class="address-box security-note"><b>Security:</b> BitBuy does not save your full card number, CVV, or expiration date. Only the last four card digits are retained for the payout record. Actual USD card transfers must be completed through a secure payment provider.</div>
+      </div>
+
+      <button class="btn primary full" id="submit-withdrawal" {% if selected_method == 'card' and not btc_usd_rate %}disabled{% endif %}>Submit withdrawal request</button>
+    </form>
+  </div>
+</section>
+
+<div class="heading"><h2>My withdrawals</h2></div>
+<div class="table">
+{% for r in withdrawals %}
+  <div class="row">
+    <i class="{{'debit' if r.status=='approved' else 'credit'}}">{% if r.status=='approved' %}−{% else %}•{% endif %}</i>
+    <div>
+      <b>{% if (r.method or 'bitcoin') == 'card' %}${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}{% else %}{{"{:,.8f}".format(r.amount|float)}} BTC · Bitcoin{% endif %} · {{r.status|capitalize}}</b>
+      <small>
+        {% if (r.method or 'bitcoin') == 'card' %}Bank: {{r.bank_name}} · BTC reserved: {{"{:,.8f}".format(r.amount|float)}} BTC{% else %}To <span class="mono">{{r.destination_address}}</span>{% endif %}
+        {% if r.payout_txid %} · TXID: <span class="mono">{{r.payout_txid}}</span>{% endif %}
+        {% if r.payout_reference %} · Transfer ref: <span class="mono">{{r.payout_reference}}</span>{% endif %}
+        {% if r.note %} · {{r.note}}{% endif %}
+      </small>
+    </div>
+    <strong>{{r.created_at.strftime('%d %b %Y')}}</strong>
+  </div>
+{% else %}<div class="empty">No withdrawal requests yet.</div>{% endfor %}
+</div>
+<script>
+(function(){
+  const radios=[...document.querySelectorAll('input[name="method"]')];
+  const btcPanel=document.getElementById('bitcoin-panel');
+  const cardPanel=document.getElementById('card-panel');
+  const submit=document.getElementById('submit-withdrawal');
+  const cardInputs=[...cardPanel.querySelectorAll('input')];
+  const btcInputs=[...btcPanel.querySelectorAll('input')];
+  const rateAvailable={{ 'true' if btc_usd_rate else 'false' }};
+  function sync(){
+    const card=radios.find(r=>r.checked)?.value==='card';
+    btcPanel.hidden=card; cardPanel.hidden=!card;
+    btcInputs.forEach(i=>i.disabled=card);
+    cardInputs.forEach(i=>i.disabled=!card || !rateAvailable);
+    submit.disabled=card && !rateAvailable;
+  }
+  radios.forEach(r=>r.addEventListener('change',sync)); sync();
+})();
+</script>
+{% endblock %}

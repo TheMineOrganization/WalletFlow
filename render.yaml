@@ -15,3 +15,5 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: BTC_USD_RATE
+        sync: false

@@ -12,8 +12,10 @@ BitBuy is a Flask + SQLAlchemy BTC wallet ledger with Google-only authentication
 - User deposit requests with TXIDs
 - Admin approval/rejection of deposits
 - User withdrawal requests to a Bitcoin address
-- Admin approval/rejection of withdrawals
-- Payout TXID recorded when a withdrawal is approved
+- User USD card payout requests with bank/card-holder/contact/billing details
+- Server-side BTC/USD conversion for USD requests
+- Admin approval/rejection of withdrawals; completed requests leave the pending queue
+- Payout TXID/reference recorded when a withdrawal is completed
 - Glowing withdrawal-approved confirmation page
 - Live customer ↔ admin Socket.IO chat
 - Admin customer conversation list
@@ -96,3 +98,11 @@ Set `SECRET_KEY` separately (Render can generate it), plus the Google OAuth and 
 
 ### Render live chat
 The Render start command uses Gunicorn's threaded worker with `simple-websocket`, which allows Flask-SocketIO chat messages to arrive without page refreshes on the deployed single-instance service.
+
+## USD card payouts
+
+The withdrawal page now has two methods: Bitcoin address and USD card payout. A USD request is converted to the BTC amount reserved from the user's wallet using a server-side BTC/USD price; the app uses `BTC_USD_RATE` when supplied, otherwise it fetches the current CoinGecko price with a short cache.
+
+For card security, the app does **not** store the full card number, CVV, or expiration date. It retains only the last four card digits plus the requested payout details for the pending admin queue. The app is a request/ledger layer; an actual USD card transfer still requires a secure payment/payout provider.
+
+Once an admin completes or rejects a withdrawal, it no longer appears in the pending withdrawal queue. For a completed USD payout, the admin enters a transfer confirmation/reference.
