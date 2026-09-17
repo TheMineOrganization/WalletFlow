@@ -1,0 +1,1 @@
+function toggleMenu(){const n=document.getElementById("nav-menu");if(n)n.classList.toggle("open")}setTimeout(()=>document.querySelectorAll(".flash").forEach(x=>{x.style.opacity="0";setTimeout(()=>x.remove(),400)}),4500);
