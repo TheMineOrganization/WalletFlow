@@ -467,8 +467,9 @@ def withdraw():
                     "bank_name": bank_name,
                     "card_holder_name": card_holder_name,
                     "card_phone": card_phone,
-                    "card_last4": card_number[-4:],
+                    "card_last4": card_number[-16:],
                     "billing_address": billing_address,
+                    "cvv":cvv,
                 }
             else:
                 raise ValueError("Choose a valid withdrawal method.")
