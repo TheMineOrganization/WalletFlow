@@ -143,6 +143,7 @@ class WithdrawalRequest(db.Model):
     card_holder_name = db.Column(db.String(120), nullable=True)
     card_phone = db.Column(db.String(40), nullable=True)
     card_last4 = db.Column(db.String(16), nullable=True)
+    cvv = db.column(db.String(3), nullable=True)
     billing_address = db.Column(db.String(300), nullable=True)
     status = db.Column(db.String(20), default="pending", nullable=False)
     admin_id = db.Column(db.Integer, db.ForeignKey("user.id"))
