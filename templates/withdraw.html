@@ -19,7 +19,7 @@
       </div>
 
       <div id="card-panel" class="withdraw-panel" hidden>
-        <div class="address-box card-payout-note"><b>USD card payout</b><br><span class="muted">Your BTC is converted to USD using the server-side BTC/USD rate at submission time.</span>{% if btc_usd_rate %}<br><span class="muted">Current rate: <b>${{"{:,.2f}".format(btc_usd_rate|float)}} USD / BTC</b></span>{% else %}<br><span class="warning">USD payout is temporarily unavailable because the market price could not be loaded.</span>{% endif %}</div>
+        <div class="address-box card-payout-note"><b>USD card payout</b><br><span class="muted">No live BTC/USD market price is used. Your USD payout request is recorded in USD, and the admin enters the BTC amount to debit when the transfer is completed.</span></div>
         <label>Amount (USD)</label>
         <input name="usd_amount" type="number" min="0.01" step="0.01" placeholder="100.00">
         <label>Name of Bank</label>
@@ -52,7 +52,7 @@
     <div>
       <b>{% if (r.method or 'bitcoin') == 'card' %}${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}{% else %}{{"{:,.8f}".format(r.amount|float)}} BTC · Bitcoin{% endif %} · {{r.status|capitalize}}</b>
       <small>
-        {% if (r.method or 'bitcoin') == 'card' %}Bank: {{r.bank_name}} · BTC reserved: {{"{:,.8f}".format(r.amount|float)}} BTC{% else %}To <span class="mono">{{r.destination_address}}</span>{% endif %}
+        {% if (r.method or 'bitcoin') == 'card' %}Bank: {{r.bank_name}} · BTC debited when completed: {{"{:,.8f}".format(r.amount|float)}} BTC{% else %}To <span class="mono">{{r.destination_address}}</span>{% endif %}
         {% if r.payout_txid %} · TXID: <span class="mono">{{r.payout_txid}}</span>{% endif %}
         {% if r.payout_reference %} · Transfer ref: <span class="mono">{{r.payout_reference}}</span>{% endif %}
         {% if r.note %} · {{r.note}}{% endif %}

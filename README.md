@@ -70,7 +70,7 @@ Customers open **Chat** to message support. Both admin Google accounts can open 
 
 ## BTC/USD conversion
 
-The dashboard obtains the current BTC/USD market price from CoinGecko in the browser and calculates the customer's BTC balance in USD. If the market-price request is unavailable, the conversion displays `Unavailable` rather than inventing a price.
+USD card withdrawals do not depend on a live BTC/USD market-price API. The customer requests a USD payout, and the admin records the BTC amount to debit when the payout has actually been completed. The dashboard may still display an optional live USD estimate.
 
 ## Important Bitcoin behavior
 

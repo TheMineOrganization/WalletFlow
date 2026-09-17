@@ -1,7 +1,6 @@
 import os
 import re
 import secrets
-import time
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from functools import wraps
 from datetime import datetime
@@ -14,7 +13,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.security import generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
-import requests
 
 load_dotenv()
 
@@ -233,39 +231,6 @@ def valid_expiration(value):
     return (year, month) >= (now.year, now.month)
 
 
-def get_btc_usd_rate():
-    configured = os.getenv("BTC_USD_RATE", "").strip()
-    if configured:
-        try:
-            rate = Decimal(configured)
-            if rate > 0:
-                return rate
-        except (InvalidOperation, ValueError):
-            pass
-
-    # Use a short-lived cache so card withdrawal requests do not call the
-    # market-price endpoint more than necessary. No price is invented if the
-    # market endpoint is unavailable.
-    now = time.time()
-    cached = getattr(get_btc_usd_rate, "_cache", None)
-    if cached and cached[1] > now:
-        return cached[0]
-    try:
-        response = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": "bitcoin", "vs_currencies": "usd"},
-            timeout=5,
-        )
-        response.raise_for_status()
-        price = Decimal(str(response.json()["bitcoin"]["usd"]))
-    except Exception as exc:
-        raise ValueError("BTC/USD market price is unavailable.") from exc
-    if price <= 0:
-        raise ValueError("BTC/USD market price is unavailable.")
-    get_btc_usd_rate._cache = (price, now + 60)
-    return price
-
-
 def admin_required(fn):
     @wraps(fn)
     @login_required
@@ -445,7 +410,6 @@ def deposit():
 @login_required
 def withdraw():
     w = wallet_for(current_user)
-    btc_usd_rate = None
     if request.method == "POST":
         method = (request.form.get("method") or "bitcoin").strip().lower()
         try:
@@ -454,9 +418,9 @@ def withdraw():
                 address = request.form.get("destination_address", "").strip()
                 if not (address.startswith(("1", "3", "bc1")) and 14 <= len(address) <= 128):
                     raise ValueError("Enter a valid-looking Bitcoin mainnet address.")
-                usd_amount = None
                 details = {
                     "method": "bitcoin",
+                    "amount": amount,
                     "destination_address": address,
                     "usd_amount": None,
                     "bank_name": None,
@@ -466,12 +430,11 @@ def withdraw():
                     "billing_address": None,
                 }
             elif method == "card":
+                # Card payouts are requested in USD and intentionally do not
+                # depend on a live BTC/USD market-price API. The exact BTC
+                # amount to debit is entered by an admin when the real USD
+                # payout has been completed.
                 usd_amount = parse_usd(request.form.get("usd_amount", ""))
-                btc_usd_rate = get_btc_usd_rate()
-                amount = (usd_amount / btc_usd_rate).quantize(BTC_PLACES, rounding=ROUND_DOWN)
-                if amount <= 0:
-                    raise ValueError("The USD amount is too small for the current BTC/USD rate.")
-
                 bank_name = request.form.get("bank_name", "").strip()
                 card_holder_name = request.form.get("card_holder_name", "").strip()
                 card_phone = request.form.get("card_phone", "").strip()
@@ -498,6 +461,7 @@ def withdraw():
 
                 details = {
                     "method": "card",
+                    "amount": Decimal("0.00000000"),
                     "destination_address": "CARD_PAYOUT",
                     "usd_amount": usd_amount,
                     "bank_name": bank_name,
@@ -510,54 +474,53 @@ def withdraw():
                 raise ValueError("Choose a valid withdrawal method.")
         except ValueError as e:
             flash(str(e), "error")
-            if method == "card" and btc_usd_rate is None:
-                try:
-                    btc_usd_rate = get_btc_usd_rate()
-                except Exception:
-                    btc_usd_rate = None
             withdrawals = WithdrawalRequest.query.filter_by(user_id=current_user.id).order_by(WithdrawalRequest.created_at.desc()).all()
-            return render_template("withdraw.html", wallet=w, withdrawals=withdrawals, btc_usd_rate=btc_usd_rate, selected_method=method)
-        if amount > Decimal(str(w.balance)):
-            flash("Insufficient available BTC balance for this withdrawal.", "error")
-        else:
+            return render_template("withdraw.html", wallet=w, withdrawals=withdrawals, selected_method=method)
+
+        amount = details["amount"]
+        if method == "bitcoin":
+            if amount > Decimal(str(w.balance)):
+                flash("Insufficient available BTC balance for this withdrawal.", "error")
+                return redirect(url_for("withdraw"))
+
             pending_total = db.session.query(db.func.coalesce(db.func.sum(WithdrawalRequest.amount), 0)).filter(
                 WithdrawalRequest.wallet_id == w.id,
                 WithdrawalRequest.status == "pending",
+                WithdrawalRequest.method == "bitcoin",
             ).scalar()
             available = Decimal(str(w.balance)) - Decimal(str(pending_total or 0))
             if amount > available:
-                flash("That amount is already partly reserved by another pending withdrawal.", "error")
-            else:
-                db.session.add(
-                    WithdrawalRequest(
-                        user_id=current_user.id,
-                        wallet_id=w.id,
-                        amount=amount,
-                        destination_address=details["destination_address"],
-                        method=details["method"],
-                        usd_amount=details["usd_amount"],
-                        bank_name=details["bank_name"],
-                        card_holder_name=details["card_holder_name"],
-                        card_phone=details["card_phone"],
-                        card_last4=details["card_last4"],
-                        billing_address=details["billing_address"],
-                    )
-                )
-                db.session.commit()
-                if method == "card":
-                    flash(f"USD card payout request sent. ${usd_amount:,.2f} was reserved at {btc_usd_rate:,.2f} USD/BTC (about {amount:.8f} BTC).", "success")
-                else:
-                    flash("Bitcoin withdrawal request sent to the admin for approval.", "success")
+                flash("That amount is already partly reserved by another pending Bitcoin withdrawal.", "error")
                 return redirect(url_for("withdraw"))
+        else:
+            # No market conversion is performed here. The BTC debit is set by
+            # the admin after the USD transfer has actually been completed.
+            amount = Decimal("0.00000000")
+
+        db.session.add(
+            WithdrawalRequest(
+                user_id=current_user.id,
+                wallet_id=w.id,
+                amount=amount,
+                destination_address=details["destination_address"],
+                method=details["method"],
+                usd_amount=details["usd_amount"],
+                bank_name=details["bank_name"],
+                card_holder_name=details["card_holder_name"],
+                card_phone=details["card_phone"],
+                card_last4=details["card_last4"],
+                billing_address=details["billing_address"],
+            )
+        )
+        db.session.commit()
+        if method == "card":
+            flash(f"USD card payout request sent for ${details['usd_amount']:,.2f}. The BTC debit will be set by an admin when the transfer is completed.", "success")
+        else:
+            flash("Bitcoin withdrawal request sent to the admin for approval.", "success")
+        return redirect(url_for("withdraw"))
 
     withdrawals = WithdrawalRequest.query.filter_by(user_id=current_user.id).order_by(WithdrawalRequest.created_at.desc()).all()
-    if btc_usd_rate is None:
-        try:
-            btc_usd_rate = get_btc_usd_rate()
-        except Exception:
-            btc_usd_rate = None
-    return render_template("withdraw.html", wallet=w, withdrawals=withdrawals, btc_usd_rate=btc_usd_rate, selected_method=request.args.get("method", "bitcoin"))
-
+    return render_template("withdraw.html", wallet=w, withdrawals=withdrawals, selected_method=request.args.get("method", "bitcoin"))
 
 @app.route("/withdrawal/<int:withdrawal_id>/success")
 @login_required
@@ -754,20 +717,26 @@ def review_withdrawal(withdrawal_id):
             if len(payout_txid) < 20 or len(payout_txid) > 128:
                 flash("Enter the Bitcoin payout TXID after sending the BTC.", "error")
                 return redirect(url_for("admin_dashboard"))
+            amount = Decimal(str(r.amount))
         else:
             payout_reference = request.form.get("payout_reference", "").strip()
             if len(payout_reference) < 3 or len(payout_reference) > 128:
                 flash("Enter the transfer confirmation/reference after completing the USD payout.", "error")
                 return redirect(url_for("admin_dashboard"))
+            try:
+                amount = parse_btc(request.form.get("debit_btc_amount", ""))
+            except ValueError as exc:
+                flash(f"Enter the BTC amount to debit after the USD transfer: {exc}", "error")
+                return redirect(url_for("admin_dashboard"))
 
         w = r.wallet
         old = Decimal(str(w.balance))
-        amount = Decimal(str(r.amount))
         if amount > old:
             flash("Withdrawal cannot be completed because the user no longer has enough available BTC.", "error")
             return redirect(url_for("admin_dashboard"))
         new = old - amount
         w.balance = new
+        r.amount = amount
         r.status = "approved"
         r.admin_id = current_user.id
         r.reviewed_at = db.func.now()
