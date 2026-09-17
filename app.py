@@ -16,18 +16,13 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-secret")
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///wallet_app.db").strip()
-# Render may provide the legacy postgres:// scheme. SQLAlchemy 2.x expects postgresql://.
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///wallet_app.db")
+# Some PostgreSQL providers expose the legacy postgres:// scheme.
+# SQLAlchemy expects postgresql://.
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
-
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-# Keep database connections healthy on Render and recover cleanly after idle connections.
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_pre_ping": True,
-    "pool_recycle": 300,
-}
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
@@ -177,21 +172,16 @@ def admin_required(fn):
 
 
 def ensure_schema():
-    """Create the WalletFlow schema on a fresh database and add older columns if needed.
-
-    This is intentionally safe for both SQLite (local development) and PostgreSQL (Render).
-    For a brand-new Render PostgreSQL database, create_all() creates the complete schema.
-    """
+    """Small SQLite compatibility migration for existing WalletFlow databases."""
     with app.app_context():
         db.create_all()
         inspector = db.inspect(db.engine)
         columns = {c["name"] for c in inspector.get_columns("user")}
         with db.engine.begin() as conn:
-            # Quote the table name because USER is a PostgreSQL keyword.
             if "google_sub" not in columns:
-                conn.exec_driver_sql('ALTER TABLE "user" ADD COLUMN google_sub VARCHAR(255)')
+                conn.exec_driver_sql("ALTER TABLE user ADD COLUMN google_sub VARCHAR(255)")
             if "password_hash" not in columns:
-                conn.exec_driver_sql('ALTER TABLE "user" ADD COLUMN password_hash VARCHAR(255)')
+                conn.exec_driver_sql("ALTER TABLE user ADD COLUMN password_hash VARCHAR(255)")
 
 
 @app.route("/")
@@ -563,9 +553,6 @@ def admin_wallet(user_id):
     return render_template("admin_wallet.html", user=u, wallet=w)
 
 
-# Render/Gunicorn imports app.py instead of executing it as __main__.
-# Initialize the schema during application startup so a fresh PostgreSQL database is ready.
-ensure_schema()
-
 if __name__ == "__main__":
+    ensure_schema()
     socketio.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=os.getenv("FLASK_DEBUG", "0") == "1")

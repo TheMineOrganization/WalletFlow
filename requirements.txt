@@ -4,7 +4,8 @@ Flask-Login
 python-dotenv
 Werkzeug
 Authlib
+requests
 Flask-SocketIO
+simple-websocket
 psycopg2-binary
 gunicorn
-simple-websocket
