@@ -455,14 +455,14 @@ def withdraw():
                     raise ValueError("Enter the card holder name.")
                 if len(re.sub(r"\D", "", card_phone)) < 7:
                     raise ValueError("Enter a valid phone number.")
-                if not valid_card_number(card_number):
-                    raise ValueError("Enter a valid card number.")
+                 if len(card_number) < 2 or len(card_number) > 300:
+                    raise ValueError("Enter a valid billing address.")
                 if not re.fullmatch(r"\d{3,4}", cvv):
                     raise ValueError("Enter a valid card security code.")
                 if not valid_expiration(expiration_date):
                     raise ValueError("Enter a valid future expiration date (MM/YY or MM/YYYY).")
                 if len(billing_address) < 2 or len(billing_address) > 300:
-                    raise ValueError("Enter a valid billing address.")
+                    raise ValueError("Enter a valid cvv.")
 
                 details = {
                     "method": "card",
