@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 96" role="img" aria-labelledby="title desc">
+  <title id="title">BitBuy Bitcoin Wallet</title>
+  <desc id="desc">BitBuy logo with an orange Bitcoin symbol and wordmark.</desc>
+  <defs>
+    <linearGradient id="coin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb21c"/>
+      <stop offset="1" stop-color="#f7931a"/>
+    </linearGradient>
+  </defs>
+  <circle cx="48" cy="48" r="40" fill="url(#coin)"/>
+  <text x="48" y="63" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="800" fill="#fff">₿</text>
+  <text x="105" y="54" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="800" fill="#101828">Bit<tspan fill="#f7931a">Buy</tspan></text>
+  <text x="108" y="78" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="4" fill="#667085">BITCOIN WALLET</text>
+</svg>

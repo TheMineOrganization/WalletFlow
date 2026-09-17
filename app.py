@@ -27,6 +27,16 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Keep PostgreSQL connections healthy on Render. Render can recycle idle
+# connections, so SQLAlchemy should check a pooled connection before reuse
+# and periodically replace older connections.
+if DATABASE_URL.startswith("postgresql://"):
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+        "pool_timeout": 30,
+    }
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
@@ -61,7 +71,7 @@ CURRENCY_SYMBOL = "BTC"
 ADMIN_EMAILS = {"privateid1100@gmail.com", "cstones625@gmail.com"}
 BTC_PLACES = Decimal("0.00000001")
 WELCOME_BONUS_BTC = Decimal("0.00650000")
-app.jinja_env.globals.update(app_name="WalletFlow", currency_symbol=CURRENCY_SYMBOL, btc_deposit_address=BTC_DEPOSIT_ADDRESS)
+app.jinja_env.globals.update(app_name="BitBuy", currency_symbol=CURRENCY_SYMBOL, btc_deposit_address=BTC_DEPOSIT_ADDRESS)
 
 
 class User(UserMixin, db.Model):

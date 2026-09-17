@@ -1,6 +1,6 @@
-# WalletFlow — Bitcoin wallet ledger
+# BitBuy — Bitcoin wallet ledger
 
-WalletFlow is a Flask + SQLAlchemy BTC wallet ledger with Google-only authentication, admin approvals, live support chat, and BTC/USD conversion display.
+BitBuy is a Flask + SQLAlchemy BTC wallet ledger with Google-only authentication, admin approvals, live support chat, and BTC/USD conversion display.
 
 ## Included
 
