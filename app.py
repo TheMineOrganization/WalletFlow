@@ -11,10 +11,14 @@ from flask_login import LoginManager, UserMixin, current_user, login_required, l
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.security import generate_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
 
 app = Flask(__name__)
+# Render terminates HTTPS at its proxy. Trust the forwarded scheme/host so
+# url_for(..., _external=True) generates the public https:// callback URL.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-secret")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///wallet_app.db")
 # Some PostgreSQL providers expose the legacy postgres:// scheme.
@@ -182,6 +186,12 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE user ADD COLUMN google_sub VARCHAR(255)")
             if "password_hash" not in columns:
                 conn.exec_driver_sql("ALTER TABLE user ADD COLUMN password_hash VARCHAR(255)")
+
+
+# Gunicorn imports this module instead of executing the __main__ block.
+# Initialize the SQLAlchemy schema during app startup so a fresh Render database
+# gets its tables before the first request.
+ensure_schema()
 
 
 @app.route("/")

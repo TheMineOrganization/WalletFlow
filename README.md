@@ -87,3 +87,9 @@ The application includes a small SQLite compatibility migration for the new Goog
 ## Security before real-money production use
 
 This remains a starting wallet/ledger application, not a production custody system. Before holding real BTC, add HTTPS, CSRF protection, strong admin authentication/2FA, audit logging, database transactions/locking, rate limiting, robust Bitcoin address validation, blockchain confirmation checks, hot/cold wallet separation, secure private-key custody, backups, monitoring, and appropriate legal/compliance controls.
+
+## Render PostgreSQL
+
+Set `DATABASE_URL` in the Render web service to the **Internal Database URL** from your Render PostgreSQL database. Do not leave it blank, and do not put the `SECRET_KEY` in this field.
+
+Set `SECRET_KEY` separately (Render can generate it), plus the Google OAuth and BTC address variables.
