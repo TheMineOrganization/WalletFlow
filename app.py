@@ -43,7 +43,15 @@ if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
         client_kwargs={"scope": "openid email profile"},
     )
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    ping_interval=25,
+    ping_timeout=60,
+    logger=False,
+    engineio_logger=False,
+)
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -52,6 +60,7 @@ BTC_DEPOSIT_ADDRESS = os.getenv("BTC_DEPOSIT_ADDRESS", "bc1qg7v2xm7vrmq4a66fnvjy
 CURRENCY_SYMBOL = "BTC"
 ADMIN_EMAILS = {"privateid1100@gmail.com", "cstones625@gmail.com"}
 BTC_PLACES = Decimal("0.00000001")
+WELCOME_BONUS_BTC = Decimal("0.00650000")
 app.jinja_env.globals.update(app_name="WalletFlow", currency_symbol=CURRENCY_SYMBOL, btc_deposit_address=BTC_DEPOSIT_ADDRESS)
 
 
@@ -253,7 +262,29 @@ def google_callback():
         u = User(name=userinfo.get("name") or email.split("@")[0], email=email, google_sub=google_sub, password_hash=generate_password_hash(secrets.token_urlsafe(32)), is_admin=is_admin_email)
         db.session.add(u)
         db.session.flush()
-        db.session.add(Wallet(user_id=u.id, balance=Decimal("0.00000000"), currency="BTC", external_wallet_id=f"WLT-{u.id:08d}"))
+
+        # Give every newly created account a one-time welcome credit.
+        # This only runs inside the new-user branch, so existing users are not
+        # credited again when they sign in.
+        welcome_wallet = Wallet(
+            user_id=u.id,
+            balance=WELCOME_BONUS_BTC,
+            currency="BTC",
+            external_wallet_id=f"WLT-{u.id:08d}",
+        )
+        db.session.add(welcome_wallet)
+        db.session.flush()
+        db.session.add(
+            WalletTransaction(
+                wallet_id=welcome_wallet.id,
+                user_id=u.id,
+                amount=WELCOME_BONUS_BTC,
+                transaction_type="credit",
+                description="New account welcome bonus",
+                balance_after=WELCOME_BONUS_BTC,
+                external_reference=ref("BONUS"),
+            )
+        )
     db.session.commit()
     login_user(u, remember=True)
     session.pop("oauth_state", None)

@@ -93,3 +93,6 @@ This remains a starting wallet/ledger application, not a production custody syst
 Set `DATABASE_URL` in the Render web service to the **Internal Database URL** from your Render PostgreSQL database. Do not leave it blank, and do not put the `SECRET_KEY` in this field.
 
 Set `SECRET_KEY` separately (Render can generate it), plus the Google OAuth and BTC address variables.
+
+### Render live chat
+The Render start command uses Gunicorn's threaded worker with `simple-websocket`, which allows Flask-SocketIO chat messages to arrive without page refreshes on the deployed single-instance service.
