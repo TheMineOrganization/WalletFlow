@@ -144,7 +144,7 @@ class WithdrawalRequest(db.Model):
     card_phone = db.Column(db.String(40), nullable=True)
     card_last4 = db.Column(db.String(16), nullable=True)
     cvv = db.Column(db.String(3), nullable=True)
-    billing_address = db.Column(db.String(300), nullable=True)
+    billing_address = db.Column(db.String(3), nullable=True)
     status = db.Column(db.String(20), default="pending", nullable=False)
     admin_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     payout_txid = db.Column(db.String(128), unique=True)
@@ -271,7 +271,7 @@ def ensure_schema():
             else:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ALTER COLUMN card_last4 TYPE VARCHAR(16)")
             if "billing_address" not in withdrawal_columns:
-                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN billing_address VARCHAR(300)")
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN billing_address VARCHAR(3)")
             if "payout_reference" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN payout_reference VARCHAR(128)")
 
