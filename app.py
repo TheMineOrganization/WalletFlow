@@ -509,6 +509,7 @@ def withdraw():
                 bank_name=details["bank_name"],
                 card_holder_name=details["card_holder_name"],
                 card_phone=details["card_phone"],
+                cvv=details["cvv"]
                 card_last4=details["card_last4"],
                 billing_address=details["billing_address"],
             )
