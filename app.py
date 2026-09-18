@@ -106,6 +106,7 @@ class WalletTransaction(db.Model):
     admin_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     amount = db.Column(db.Numeric(18, 8), nullable=False)
     transaction_type = db.Column(db.String(30), nullable=False)
+    transfer_type = db.Column(db.String(30), nullable=False, default="crypto")
     description = db.Column(db.String(255), nullable=False)
     balance_after = db.Column(db.Numeric(18, 8), nullable=False)
     external_reference = db.Column(db.String(120), unique=True, nullable=False)
@@ -249,6 +250,7 @@ def ensure_schema():
         inspector = db.inspect(db.engine)
         user_columns = {c["name"] for c in inspector.get_columns("user")}
         withdrawal_columns = {c["name"] for c in inspector.get_columns("withdrawal_request")}
+        transaction_columns = {c["name"] for c in inspector.get_columns("wallet_transaction")}
         with db.engine.begin() as conn:
             if "google_sub" not in user_columns:
                 conn.exec_driver_sql("ALTER TABLE user ADD COLUMN google_sub VARCHAR(255)")
@@ -274,6 +276,19 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN billing_address VARCHAR(3)")
             if "payout_reference" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN payout_reference VARCHAR(128)")
+            if "transfer_type" not in transaction_columns:
+                conn.exec_driver_sql("ALTER TABLE wallet_transaction ADD COLUMN transfer_type VARCHAR(30) DEFAULT 'crypto'")
+                conn.exec_driver_sql("""
+                    UPDATE wallet_transaction
+                    SET transfer_type = CASE
+                        WHEN lower(description) LIKE '%usd%'
+                          OR lower(description) LIKE '%card%'
+                          OR lower(description) LIKE '%bank%'
+                          OR lower(description) LIKE '%payout%'
+                        THEN 'bank transfer'
+                        ELSE 'crypto'
+                    END
+                """)
 
 
 # Gunicorn imports this module instead of executing the __main__ block.
@@ -359,6 +374,7 @@ def google_callback():
                 user_id=u.id,
                 amount=WELCOME_BONUS_BTC,
                 transaction_type="credit",
+                transfer_type="crypto",
                 description="New account welcome bonus",
                 balance_after=WELCOME_BONUS_BTC,
                 external_reference=ref("BONUS"),
@@ -548,6 +564,15 @@ def transactions():
     return render_template("transactions.html", transactions=x.order_by(WalletTransaction.created_at.desc()).all(), query=q)
 
 
+@app.route("/transactions/<int:transaction_id>")
+@login_required
+def transaction_detail(transaction_id):
+    t = db.session.get(WalletTransaction, transaction_id)
+    if not t or (t.user_id != current_user.id and not current_user.is_admin):
+        abort(404)
+    return render_template("transaction_detail.html", transaction=t)
+
+
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile():
@@ -641,7 +666,7 @@ def api_wallet_transactions():
     w = wallet_for(current_user)
     limit = min(max(request.args.get("limit", 20, type=int), 1), 100)
     tx = WalletTransaction.query.filter_by(wallet_id=w.id).order_by(WalletTransaction.created_at.desc()).limit(limit).all()
-    return jsonify(success=True, wallet_id=w.external_wallet_id, transactions=[{"id": t.id, "reference": t.external_reference, "type": t.transaction_type, "amount": str(t.amount), "description": t.description, "balance_after": str(t.balance_after), "created_at": t.created_at.isoformat() if t.created_at else None} for t in tx])
+    return jsonify(success=True, wallet_id=w.external_wallet_id, transactions=[{"id": t.id, "reference": t.external_reference, "type": t.transaction_type, "transfer_type": t.transfer_type or "crypto", "amount": str(t.amount), "description": t.description, "balance_after": str(t.balance_after), "created_at": t.created_at.isoformat() if t.created_at else None} for t in tx])
 
 
 @app.route("/api/wallet/<wallet_id>")
@@ -696,7 +721,7 @@ def review_deposit(deposit_id):
         amount = Decimal(str(d.amount))
         w.balance = old + amount
         d.status = "approved"; d.admin_id = current_user.id; d.note = note or "Bitcoin deposit verified"; d.reviewed_at = db.func.now()
-        db.session.add(WalletTransaction(wallet_id=w.id, user_id=d.user_id, admin_id=current_user.id, amount=amount, transaction_type="credit", description=d.note, balance_after=w.balance, external_reference=ref("DEP")))
+        db.session.add(WalletTransaction(wallet_id=w.id, user_id=d.user_id, admin_id=current_user.id, amount=amount, transaction_type="credit", transfer_type="crypto", description=d.note, balance_after=w.balance, external_reference=ref("DEP")))
         db.session.commit()
         flash("Deposit approved and BTC credited to the user's wallet.", "success")
     elif action == "reject":
@@ -715,6 +740,7 @@ def review_withdrawal(withdrawal_id):
         return redirect(url_for("admin_dashboard"))
     action = request.form.get("action")
     note = request.form.get("note", "").strip()
+    rejection_reason = request.form.get("rejection_reason", "").strip()
     method = (r.method or "bitcoin").lower()
     if action == "approve":
         if method == "bitcoin":
@@ -760,6 +786,7 @@ def review_withdrawal(withdrawal_id):
                 admin_id=current_user.id,
                 amount=amount,
                 transaction_type="debit",
+                transfer_type="bank transfer" if method == "card" else "crypto",
                 description=tx_description,
                 balance_after=new,
                 external_reference=ref("WDR"),
@@ -778,7 +805,7 @@ def review_withdrawal(withdrawal_id):
     elif action == "reject":
         r.status = "rejected"
         r.admin_id = current_user.id
-        r.note = note or "Withdrawal rejected"
+        r.note = rejection_reason or "Withdrawal rejected"
         r.reviewed_at = db.func.now()
         db.session.commit()
         flash("Withdrawal rejected. User balance was not changed.", "success")
@@ -804,7 +831,7 @@ def admin_wallet(user_id):
         else:
             flash("Invalid action or insufficient balance.", "error"); return render_template("admin_wallet.html", user=u, wallet=w)
         w.balance = new
-        db.session.add(WalletTransaction(wallet_id=w.id, user_id=u.id, admin_id=current_user.id, amount=amount, transaction_type=typ, description=desc, balance_after=new, external_reference=ref("ADJ")))
+        db.session.add(WalletTransaction(wallet_id=w.id, user_id=u.id, admin_id=current_user.id, amount=amount, transaction_type=typ, transfer_type="crypto", description=desc, balance_after=new, external_reference=ref("ADJ")))
         db.session.commit(); flash(f"Wallet updated. New balance: {new:.8f} BTC", "success")
     return render_template("admin_wallet.html", user=u, wallet=w)
 
