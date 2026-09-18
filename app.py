@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.security import generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -278,17 +279,22 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN payout_reference VARCHAR(128)")
             if "transfer_type" not in transaction_columns:
                 conn.exec_driver_sql("ALTER TABLE wallet_transaction ADD COLUMN transfer_type VARCHAR(30) DEFAULT 'crypto'")
-                conn.exec_driver_sql("""
+                conn.execute(text("""
                     UPDATE wallet_transaction
                     SET transfer_type = CASE
-                        WHEN lower(description) LIKE '%usd%'
-                          OR lower(description) LIKE '%card%'
-                          OR lower(description) LIKE '%bank%'
-                          OR lower(description) LIKE '%payout%'
+                        WHEN lower(description) LIKE :usd_pattern
+                          OR lower(description) LIKE :card_pattern
+                          OR lower(description) LIKE :bank_pattern
+                          OR lower(description) LIKE :payout_pattern
                         THEN 'bank transfer'
                         ELSE 'crypto'
                     END
-                """)
+                """), {
+                    "usd_pattern": "%usd%",
+                    "card_pattern": "%card%",
+                    "bank_pattern": "%bank%",
+                    "payout_pattern": "%payout%"
+                })
 
 
 # Gunicorn imports this module instead of executing the __main__ block.
