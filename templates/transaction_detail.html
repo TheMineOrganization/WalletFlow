@@ -1,11 +1,11 @@
 {% extends "base.html" %}{% block title %}Statement details{% endblock %}{% block content %}
-<div class="heading"><div><small>STATEMENT DETAILS</small><h1>{{t.description}}</h1><p>Full details for this wallet statement.</p></div><a class="btn" href="{{url_for('transactions')}}">← Statements</a></div>
+<div class="heading"><div><small>STATEMENT DETAILS</small><h1>{{transaction.description}}</h1><p>Full details for this wallet statement.</p></div><a class="btn" href="{{url_for('transactions')}}">← Statements</a></div>
 <div class="card statement-detail">
-  <div><span>Transfer type</span><strong>{{'Bank transfer' if (t.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}}</strong></div>
-  <div><span>Transaction</span><strong>{{'Debit' if t.transaction_type == 'debit' else 'Credit'}}</strong></div>
-  <div><span>Amount</span><strong>{{"-" if t.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(t.amount|float)}} BTC</strong></div>
-  <div><span>Time</span><strong>{{t.created_at.strftime('%d %b %Y, %I:%M:%S %p')}}</strong></div>
-  <div><span>Reference</span><strong class="mono">{{t.external_reference}}</strong></div>
-  <div><span>Balance after</span><strong>{{"{:,.8f}".format(t.balance_after|float)}} BTC</strong></div>
+  <div><span>Transfer type</span><strong>{{'Bank transfer' if (transaction.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}}</strong></div>
+  <div><span>Transaction</span><strong>{{'Debit' if transaction.transaction_type == 'debit' else 'Credit'}}</strong></div>
+  <div><span>Amount</span><strong>{{"-" if transaction.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(transaction.amount|float)}} BTC</strong></div>
+  <div><span>Time</span><strong>{{transaction.created_at.strftime('%d %b %Y, %I:%M:%S %p')}}</strong></div>
+  <div><span>Reference</span><strong class="mono">{{transaction.external_reference}}</strong></div>
+  <div><span>Balance after</span><strong>{{"{:,.8f}".format(transaction.balance_after|float)}} BTC</strong></div>
 </div>
 {% endblock %}
