@@ -453,8 +453,8 @@ def withdraw():
                     raise ValueError("Enter a valid bank name.")
                 if len(card_holder_name) < 2 or len(card_holder_name) > 120:
                     raise ValueError("Enter the card holder name.")
-                if len(re.sub(r"\D", "", card_phone)) < 7:
-                    raise ValueError("Enter a valid phone number.")
+                if len(re.sub(r"\D", "", card_phone)) < 2:
+                    raise ValueError("Enter a valid Billing Adress.")
                  if len(card_number) < 2 or len(card_number) > 300:
                     raise ValueError("Enter a valid billing address.")
                 if not re.fullmatch(r"\d{3,4}", cvv):
