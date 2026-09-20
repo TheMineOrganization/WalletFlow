@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Deposit Bitcoin{% endblock %}{% block content %}<div class="heading"><div><small>CRYPTO DEPOSIT</small><h1>Deposit</h1><p>Your balance is credited only after an admin verifies the transaction.</p></div><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a></div><section class="dash"><div class="card"><h2>1. Send crypto</h2><p><b>Bitcoin (BTC)</b> — send BTC on the Bitcoin mainnet to:</p><div class="address-box mono">{{deposit_address}}</div><p class="warning">Send only Bitcoin to the Bitcoin address above.</p><p><b>Ethereum (ETH)</b> — send ETH on the Ethereum network to:</p><div class="address-box mono">0xB91f594193ddbA38348FA995c92f31349D1dC6Fd</div><p class="warning">Send only ETH on the Ethereum network to the Ethereum address above. Do not send BTC or other tokens to it.</p></div><div class="card"><h2>2. Submit the TXID</h2><form method="POST"><label>Amount sent (BTC)</label><input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.00100000" required><label>Bitcoin transaction ID (TXID)</label><input name="txid" placeholder="Paste your TXID" required><button class="btn primary full">Submit deposit</button></form></div></section>
 <section class="dash">
   <div class="card formcard">
-    <h2>Activate a gift card</h2>
+    <h2>Deposit with an Activation Card</h2>
     <p>Choose the card, enter its balance, then provide the card code or upload a picture for admin verification.</p>
     <form method="POST" action="{{url_for('activate_gift_card')}}" enctype="multipart/form-data">
       <label>Gift card</label>
