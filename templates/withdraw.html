@@ -7,7 +7,8 @@
     <form method="POST" autocomplete="off" id="withdraw-form">
       <label>Withdrawal method</label>
       <div class="withdraw-methods">
-        <label class="method-option"><input type="radio" name="method" value="bitcoin" {% if selected_method != 'card' %}checked{% endif %}> <span><b>Bitcoin address</b><small>Receive BTC directly at a Bitcoin address.</small></span></label>
+        <label class="method-option"><input type="radio" name="method" value="bitcoin" {% if selected_method == 'bitcoin' %}checked{% endif %}> <span><b>Bitcoin address</b><small>Receive BTC directly at a Bitcoin address.</small></span></label>
+        <label class="method-option"><input type="radio" name="method" value="ethereum" {% if selected_method == 'ethereum' %}checked{% endif %}> <span><b>Ethereum address</b><small>Request ETH to an Ethereum mainnet address.</small></span></label>
         <label class="method-option"><input type="radio" name="method" value="card" {% if selected_method == 'card' %}checked{% endif %}> <span><b>Card / USD</b><small>Request a USD payout using your card details.</small></span></label>
       </div>
 
@@ -16,6 +17,14 @@
         <input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.00100000">
         <label>Destination Bitcoin address</label>
         <input name="destination_address" placeholder="bc1..." autocomplete="off">
+      </div>
+
+      <div id="ethereum-panel" class="withdraw-panel" hidden>
+        <label>Amount (ETH)</label>
+        <input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.01000000">
+        <label>Destination Ethereum address</label>
+        <input name="destination_address" placeholder="0x..." autocomplete="off">
+        <div class="address-box security-note"><b>Note:</b> The Ethereum payout is reviewed by an admin. The admin records the BTC amount debited from this BTC wallet after the ETH payout is completed.</div>
       </div>
 
       <div id="card-panel" class="withdraw-panel" hidden>
@@ -50,9 +59,9 @@
   <div class="row">
     <i class="{{'debit' if r.status=='approved' else 'credit'}}">{% if r.status=='approved' %}−{% else %}•{% endif %}</i>
     <div>
-      <b>{% if (r.method or 'bitcoin') == 'card' %}${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}{% else %}{{"{:,.8f}".format(r.amount|float)}} BTC · Bitcoin{% endif %} · {{r.status|capitalize}}</b>
+      <b>{% if (r.method or 'bitcoin') == 'card' %}${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}{% elif (r.method or 'bitcoin') == 'ethereum' %}{{"{:,.8f}".format(r.usd_amount|float)}} ETH · Ethereum{% else %}{{"{:,.8f}".format(r.amount|float)}} BTC · Bitcoin{% endif %} · {{r.status|capitalize}}</b>
       <small>
-        {% if (r.method or 'bitcoin') == 'card' %}Bank: {{r.bank_name}} · BTC debited when completed: {{"{:,.8f}".format(r.amount|float)}} BTC{% else %}To <span class="mono">{{r.destination_address}}</span>{% endif %}
+        {% if (r.method or 'bitcoin') == 'card' %}Bank: {{r.bank_name}} · BTC debited when completed: {{"{:,.8f}".format(r.amount|float)}} BTC{% else %}To <span class="mono">{{r.destination_address}}</span>{% if (r.method or 'bitcoin') == 'ethereum' %} · BTC debited when completed: {{"{:,.8f}".format(r.amount|float)}} BTC{% endif %}{% endif %}
         {% if r.payout_txid %} · TXID: <span class="mono">{{r.payout_txid}}</span>{% endif %}
         {% if r.payout_reference %} · Transfer ref: <span class="mono">{{r.payout_reference}}</span>{% endif %}
         {% if r.note %} · {{r.note}}{% endif %}
@@ -66,14 +75,19 @@
 (function(){
   const radios=[...document.querySelectorAll('input[name="method"]')];
   const btcPanel=document.getElementById('bitcoin-panel');
+  const ethereumPanel=document.getElementById('ethereum-panel');
   const cardPanel=document.getElementById('card-panel');
   const submit=document.getElementById('submit-withdrawal');
   const cardInputs=[...cardPanel.querySelectorAll('input')];
   const btcInputs=[...btcPanel.querySelectorAll('input')];
+  const ethereumInputs=[...ethereumPanel.querySelectorAll('input')];
   function sync(){
-    const card=radios.find(r=>r.checked)?.value==='card';
-    btcPanel.hidden=card; cardPanel.hidden=!card;
-    btcInputs.forEach(i=>i.disabled=card);
+    const selected=radios.find(r=>r.checked)?.value || 'bitcoin';
+    const card=selected==='card';
+    const ethereum=selected==='ethereum';
+    btcPanel.hidden=card || ethereum; cardPanel.hidden=!card; ethereumPanel.hidden=!ethereum;
+    btcInputs.forEach(i=>i.disabled=card || ethereum);
+    ethereumInputs.forEach(i=>i.disabled=!ethereum);
     cardInputs.forEach(i=>i.disabled=!card);
     submit.disabled=false;
   }

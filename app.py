@@ -13,6 +13,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.security import generate_password_hash
+from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
@@ -74,6 +75,9 @@ ADMIN_EMAILS = {"privateid1100@gmail.com", "cstones625@gmail.com"}
 BTC_PLACES = Decimal("0.00000001")
 USD_PLACES = Decimal("0.01")
 WELCOME_BONUS_BTC = Decimal("0.00650000")
+GIFT_CARD_UPLOAD_DIR = os.path.join(app.instance_path, "gift_cards")
+os.makedirs(GIFT_CARD_UPLOAD_DIR, exist_ok=True)
+GIFT_CARD_TYPES = {"apple": "Apple Card", "google": "Google Play", "amazon": "Amazon", "steam": "Steam", "other": "Other"}
 app.jinja_env.globals.update(app_name="BitBuy", currency_symbol=CURRENCY_SYMBOL, btc_deposit_address=BTC_DEPOSIT_ADDRESS)
 
 
@@ -133,6 +137,25 @@ class DepositRequest(db.Model):
     wallet = db.relationship("Wallet", foreign_keys=[wallet_id])
 
 
+class GiftCardActivation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    wallet_id = db.Column(db.Integer, db.ForeignKey("wallet.id"), nullable=False)
+    card_type = db.Column(db.String(40), nullable=False)
+    card_name = db.Column(db.String(80), nullable=False)
+    card_code = db.Column(db.String(255), nullable=True)
+    card_balance = db.Column(db.Numeric(18, 2), nullable=False)
+    image_filename = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(20), default="pending", nullable=False)
+    admin_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    note = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    reviewed_at = db.Column(db.DateTime)
+    user = db.relationship("User", foreign_keys=[user_id])
+    admin = db.relationship("User", foreign_keys=[admin_id])
+    wallet = db.relationship("Wallet", foreign_keys=[wallet_id])
+
+
 class WithdrawalRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
@@ -140,7 +163,7 @@ class WithdrawalRequest(db.Model):
     amount = db.Column(db.Numeric(18, 8), nullable=False)
     destination_address = db.Column(db.String(128), nullable=False)
     method = db.Column(db.String(20), default="bitcoin", nullable=False)
-    usd_amount = db.Column(db.Numeric(18, 2), nullable=True)
+    usd_amount = db.Column(db.Numeric(18, 8), nullable=True)
     bank_name = db.Column(db.String(120), nullable=True)
     card_holder_name = db.Column(db.String(120), nullable=True)
     card_phone = db.Column(db.String(40), nullable=True)
@@ -245,9 +268,15 @@ def admin_required(fn):
 
 
 def ensure_schema():
-    """Small SQLite compatibility migration for existing WalletFlow databases."""
+    """Create new tables and make the existing payout amount precise enough for ETH."""
     with app.app_context():
         db.create_all()
+        try:
+            if db.engine.dialect.name == "postgresql":
+                db.session.execute(text("ALTER TABLE withdrawal_request ALTER COLUMN usd_amount TYPE NUMERIC(18,8) USING usd_amount::numeric"))
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
         inspector = db.inspect(db.engine)
         user_columns = {c["name"] for c in inspector.get_columns("user")}
         withdrawal_columns = {c["name"] for c in inspector.get_columns("withdrawal_request")}
@@ -418,7 +447,8 @@ def deposit():
             amount = parse_btc(request.form.get("amount", ""))
         except ValueError as e:
             flash(str(e), "error")
-            return render_template("deposit.html", wallet=w, deposit_address=BTC_DEPOSIT_ADDRESS)
+            gift_cards = GiftCardActivation.query.filter_by(user_id=current_user.id).order_by(GiftCardActivation.created_at.desc()).all()
+            return render_template("deposit.html", wallet=w, deposit_address=BTC_DEPOSIT_ADDRESS, deposits=DepositRequest.query.filter_by(user_id=current_user.id).order_by(DepositRequest.created_at.desc()).all(), gift_cards=gift_cards)
         txid = request.form.get("txid", "").strip()
         if len(txid) < 20 or len(txid) > 128:
             flash("Enter the Bitcoin transaction ID (TXID) after sending the BTC.", "error")
@@ -430,7 +460,8 @@ def deposit():
             flash("Deposit submitted. An admin must verify the transaction before your balance is credited.", "success")
             return redirect(url_for("deposit"))
     deposits = DepositRequest.query.filter_by(user_id=current_user.id).order_by(DepositRequest.created_at.desc()).all()
-    return render_template("deposit.html", wallet=w, deposit_address=BTC_DEPOSIT_ADDRESS, deposits=deposits)
+    gift_cards = GiftCardActivation.query.filter_by(user_id=current_user.id).order_by(GiftCardActivation.created_at.desc()).all()
+    return render_template("deposit.html", wallet=w, deposit_address=BTC_DEPOSIT_ADDRESS, deposits=deposits, gift_cards=gift_cards)
 
 
 @app.route("/withdraw", methods=["GET", "POST"])
@@ -455,6 +486,23 @@ def withdraw():
                     "card_phone": None,
                     "card_last4": None,
                     "billing_address": None,
+                }
+            elif method == "ethereum":
+                amount = parse_btc(request.form.get("amount", ""))
+                address = request.form.get("destination_address", "").strip()
+                if not re.fullmatch(r"0x[a-fA-F0-9]{40}", address):
+                    raise ValueError("Enter a valid Ethereum mainnet address.")
+                details = {
+                    "method": "ethereum",
+                    "amount": Decimal("0.00000000"),
+                    "destination_address": address,
+                    "usd_amount": amount,
+                    "bank_name": None,
+                    "card_holder_name": None,
+                    "card_phone": None,
+                    "card_last4": None,
+                    "billing_address": None,
+                    "cvv": None,
                 }
             elif method == "card":
                 # Card payouts are requested in USD and intentionally do not
@@ -518,9 +566,8 @@ def withdraw():
             if amount > available:
                 flash("That amount is already partly reserved by another pending Bitcoin withdrawal.", "error")
                 return redirect(url_for("withdraw"))
-        else:
-            # No market conversion is performed here. The BTC debit is set by
-            # the admin after the USD transfer has actually been completed.
+        elif method in ("card", "ethereum"):
+            # The admin enters the BTC debit after the external payout is completed.
             amount = Decimal("0.00000000")
 
         db.session.add(
@@ -542,12 +589,97 @@ def withdraw():
         db.session.commit()
         if method == "card":
             flash(f"USD card payout request sent for ${details['usd_amount']:,.2f}. The BTC debit will be set by an admin when the transfer is completed.", "success")
+        elif method == "ethereum":
+            flash(f"Ethereum withdrawal request sent for {details['usd_amount']:,.8f} ETH. The BTC debit will be set by an admin when the transfer is completed.", "success")
         else:
             flash("Bitcoin withdrawal request sent to the admin for approval.", "success")
         return redirect(url_for("withdraw"))
 
     withdrawals = WithdrawalRequest.query.filter_by(user_id=current_user.id).order_by(WithdrawalRequest.created_at.desc()).all()
     return render_template("withdraw.html", wallet=w, withdrawals=withdrawals, selected_method=request.args.get("method", "bitcoin"))
+
+@app.route("/deposit/gift-card", methods=["POST"])
+@login_required
+def activate_gift_card():
+    w = wallet_for(current_user)
+    card_type = (request.form.get("card_type") or "").strip().lower()
+    card_name = GIFT_CARD_TYPES.get(card_type)
+    card_code = request.form.get("card_code", "").strip()
+    try:
+        card_balance = parse_usd(request.form.get("card_balance", ""))
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("deposit"))
+    image = request.files.get("card_image")
+    if not card_name:
+        flash("Choose a valid gift card.", "error")
+        return redirect(url_for("deposit"))
+    if not card_code and not image:
+        flash("Enter the card code or upload a picture of the card.", "error")
+        return redirect(url_for("deposit"))
+    filename = None
+    if image and image.filename:
+        ext = os.path.splitext(image.filename)[1].lower()
+        if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+            flash("Upload a JPG, PNG, or WEBP card image.", "error")
+            return redirect(url_for("deposit"))
+        filename = f"gift-{secrets.token_hex(16)}{ext}"
+        image.save(os.path.join(GIFT_CARD_UPLOAD_DIR, filename))
+    db.session.add(GiftCardActivation(user_id=current_user.id, wallet_id=w.id, card_type=card_type, card_name=card_name, card_code=card_code or None, card_balance=card_balance, image_filename=filename))
+    db.session.commit()
+    flash("Gift card activation submitted. An admin must verify it before any BTC is credited.", "success")
+    return redirect(url_for("deposit"))
+
+
+@app.route("/admin/gift-card/<int:gift_card_id>/image")
+@admin_required
+def gift_card_image(gift_card_id):
+    gift = db.session.get(GiftCardActivation, gift_card_id)
+    if not gift or not gift.image_filename:
+        abort(404)
+    path = os.path.join(GIFT_CARD_UPLOAD_DIR, gift.image_filename)
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path)
+
+
+@app.route("/admin/gift-card/<int:gift_card_id>/review", methods=["POST"])
+@admin_required
+def review_gift_card(gift_card_id):
+    gift = db.session.get(GiftCardActivation, gift_card_id)
+    if not gift or gift.status != "pending":
+        flash("Gift card request is no longer pending.", "error")
+        return redirect(url_for("admin_dashboard"))
+    action = request.form.get("action")
+    note = request.form.get("note", "").strip()
+    if action == "approve":
+        try:
+            amount = parse_btc(request.form.get("debit_btc_amount", ""))
+        except ValueError as e:
+            flash(f"Enter the BTC amount to credit: {e}", "error")
+            return redirect(url_for("admin_dashboard"))
+        w = gift.wallet
+        old = Decimal(str(w.balance))
+        new = old + amount
+        w.balance = new
+        gift.status = "approved"
+        gift.admin_id = current_user.id
+        gift.note = note or "Gift card verified and activated"
+        gift.reviewed_at = db.func.now()
+        db.session.add(WalletTransaction(wallet_id=w.id, user_id=gift.user_id, admin_id=current_user.id, amount=amount, transaction_type="credit", transfer_type="crypto", description=gift.note, balance_after=new, external_reference=ref("GFT")))
+        db.session.commit()
+        flash("Gift card approved and BTC credited to the user's wallet.", "success")
+    elif action == "reject":
+        gift.status = "rejected"
+        gift.admin_id = current_user.id
+        gift.note = note or "Gift card rejected"
+        gift.reviewed_at = db.func.now()
+        db.session.commit()
+        flash("Gift card activation rejected.", "success")
+    else:
+        flash("Invalid review action.", "error")
+    return redirect(url_for("admin_dashboard"))
+
 
 @app.route("/withdrawal/<int:withdrawal_id>/success")
 @login_required
@@ -697,7 +829,8 @@ def admin_dashboard():
     recent = WalletTransaction.query.order_by(WalletTransaction.created_at.desc()).limit(10).all()
     pending_deposits = DepositRequest.query.filter_by(status="pending").order_by(DepositRequest.created_at.asc()).all()
     pending_withdrawals = WithdrawalRequest.query.filter_by(status="pending").order_by(WithdrawalRequest.created_at.asc()).all()
-    return render_template("admin.html", users=users, search=q, total_users=User.query.count(), total_balance=Decimal(str(total or 0)), total_transactions=WalletTransaction.query.count(), recent_adjustments=recent, pending_deposits=pending_deposits, pending_withdrawals=pending_withdrawals)
+    pending_gift_cards = GiftCardActivation.query.filter_by(status="pending").order_by(GiftCardActivation.created_at.asc()).all()
+    return render_template("admin.html", users=users, search=q, total_users=User.query.count(), total_balance=Decimal(str(total or 0)), total_transactions=WalletTransaction.query.count(), recent_adjustments=recent, pending_deposits=pending_deposits, pending_withdrawals=pending_withdrawals, pending_gift_cards=pending_gift_cards)
 
 @app.route("/admin/transactions")
 @admin_required
@@ -758,7 +891,7 @@ def review_withdrawal(withdrawal_id):
         else:
             payout_reference = request.form.get("payout_reference", "").strip()
             if len(payout_reference) < 3 or len(payout_reference) > 128:
-                flash("Enter the transfer confirmation/reference after completing the USD payout.", "error")
+                flash("Enter the transfer confirmation/reference after completing the payout.", "error")
                 return redirect(url_for("admin_dashboard"))
             try:
                 amount = parse_btc(request.form.get("debit_btc_amount", ""))
@@ -783,7 +916,7 @@ def review_withdrawal(withdrawal_id):
             tx_description = r.note
         else:
             r.payout_reference = payout_reference
-            r.note = note or "USD card payout completed"
+            r.note = note or ("Ethereum withdrawal completed" if method == "ethereum" else "USD card payout completed")
             tx_description = r.note
         db.session.add(
             WalletTransaction(
@@ -806,6 +939,8 @@ def review_withdrawal(withdrawal_id):
         )
         if method == "card":
             flash("USD payout marked complete. The request has been removed from the pending queue.", "success")
+        elif method == "ethereum":
+            flash("Ethereum payout marked complete. The request has been removed from the pending queue.", "success")
         else:
             flash("Bitcoin payout marked complete. The request has been removed from the pending queue.", "success")
     elif action == "reject":

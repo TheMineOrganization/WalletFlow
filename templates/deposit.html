@@ -1,1 +1,32 @@
-{% extends "base.html" %}{% block title %}Deposit Bitcoin{% endblock %}{% block content %}<div class="heading"><div><small>CRYPTO DEPOSIT</small><h1>Deposit</h1><p>Your balance is credited only after an admin verifies the transaction.</p></div><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a></div><section class="dash"><div class="card"><h2>1. Send crypto</h2><p><b>Bitcoin (BTC)</b> — send BTC on the Bitcoin mainnet to:</p><div class="address-box mono">{{deposit_address}}</div><p class="warning">Send only Bitcoin to the Bitcoin address above.</p><p><b>Ethereum (ETH)</b> — send ETH on the Ethereum network to:</p><div class="address-box mono">0xB91f594193ddbA38348FA995c92f31349D1dC6Fd</div><p class="warning">Send only ETH on the Ethereum network to the Ethereum address above. Do not send BTC or other tokens to it.</p></div><div class="card"><h2>2. Submit the TXID</h2><form method="POST"><label>Amount sent (BTC)</label><input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.00100000" required><label>Bitcoin transaction ID (TXID)</label><input name="txid" placeholder="Paste your TXID" required><button class="btn primary full">Submit deposit</button></form></div></section><div class="heading"><h2>My deposits</h2></div><div class="table">{% for d in deposits %}<div class="row"><i class="{{'credit' if d.status=='approved' else 'debit'}}">{% if d.status=='approved' %}+{% else %}•{% endif %}</i><div><b>{{d.amount|float|round(8)}} BTC · {{d.status|capitalize}}</b><small>TXID: <span class="mono">{{d.txid}}</span>{% if d.note %} · {{d.note}}{% endif %}</small></div><strong>{{d.created_at.strftime('%d %b %Y')}}</strong></div>{% else %}<div class="empty">No deposit requests yet.</div>{% endfor %}</div>{% endblock %}
+{% extends "base.html" %}{% block title %}Deposit Bitcoin{% endblock %}{% block content %}<div class="heading"><div><small>CRYPTO DEPOSIT</small><h1>Deposit</h1><p>Your balance is credited only after an admin verifies the transaction.</p></div><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a></div><section class="dash"><div class="card"><h2>1. Send crypto</h2><p><b>Bitcoin (BTC)</b> — send BTC on the Bitcoin mainnet to:</p><div class="address-box mono">{{deposit_address}}</div><p class="warning">Send only Bitcoin to the Bitcoin address above.</p><p><b>Ethereum (ETH)</b> — send ETH on the Ethereum network to:</p><div class="address-box mono">0xB91f594193ddbA38348FA995c92f31349D1dC6Fd</div><p class="warning">Send only ETH on the Ethereum network to the Ethereum address above. Do not send BTC or other tokens to it.</p></div><div class="card"><h2>2. Submit the TXID</h2><form method="POST"><label>Amount sent (BTC)</label><input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.00100000" required><label>Bitcoin transaction ID (TXID)</label><input name="txid" placeholder="Paste your TXID" required><button class="btn primary full">Submit deposit</button></form></div></section>
+<section class="dash">
+  <div class="card formcard">
+    <h2>Activate a gift card</h2>
+    <p>Choose the card, enter its balance, then provide the card code or upload a picture for admin verification.</p>
+    <form method="POST" action="{{url_for('activate_gift_card')}}" enctype="multipart/form-data">
+      <label>Gift card</label>
+      <select name="card_type" required>
+        <option value="">Select a card</option>
+        <option value="apple">Apple Card</option>
+        <option value="google">Google Play</option>
+        <option value="amazon">Amazon</option>
+        <option value="steam">Steam</option>
+        <option value="other">Other</option>
+      </select>
+      <label>Card balance (USD)</label>
+      <input name="card_balance" type="number" min="0.01" step="0.01" placeholder="100.00" required>
+      <label>Card code</label>
+      <input name="card_code" maxlength="255" placeholder="Enter card code (optional if uploading a picture)">
+      <label>Upload card picture</label>
+      <input name="card_image" type="file" accept="image/jpeg,image/png,image/webp">
+      <button class="btn primary full">Submit gift card for activation</button>
+    </form>
+  </div>
+  <div class="card">
+    <h2>My gift card requests</h2>
+    {% for g in gift_cards %}
+      <div class="row"><i class="{{'credit' if g.status=='approved' else 'debit'}}">{% if g.status=='approved' %}+{% else %}•{% endif %}</i><div><b>{{g.card_name}} · ${{"{:,.2f}".format(g.card_balance|float)}} · {{g.status|capitalize}}</b><small>{% if g.card_code %}Code submitted{% endif %}{% if g.image_filename %}{% if g.card_code %} · {% endif %}Picture uploaded{% endif %}{% if g.note %} · {{g.note}}{% endif %}</small></div><strong>{{g.created_at.strftime('%d %b %Y')}}</strong></div>
+    {% else %}<div class="empty">No gift card requests yet.</div>{% endfor %}
+  </div>
+</section>
+<div class="heading"><h2>My deposits</h2></div><div class="table">{% for d in deposits %}<div class="row"><i class="{{'credit' if d.status=='approved' else 'debit'}}">{% if d.status=='approved' %}+{% else %}•{% endif %}</i><div><b>{{d.amount|float|round(8)}} BTC · {{d.status|capitalize}}</b><small>TXID: <span class="mono">{{d.txid}}</span>{% if d.note %} · {{d.note}}{% endif %}</small></div><strong>{{d.created_at.strftime('%d %b %Y')}}</strong></div>{% else %}<div class="empty">No deposit requests yet.</div>{% endfor %}</div>{% endblock %}
