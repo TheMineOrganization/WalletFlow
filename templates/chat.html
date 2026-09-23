@@ -4,6 +4,7 @@
   {% if admin_mode %}<aside class="chat-users card"><h3>Customers</h3><div class="online-admin"><span></span> Admin support online</div>{% for u in users %}<a class="chat-user {% if u.id == selected_user_id %}selected{% endif %}" href="{{url_for('chat', user_id=u.id)}}"><strong>{{u.name}}</strong><small>{{u.email}}</small></a>{% else %}<div class="empty">No customers yet.</div>{% endfor %}</aside>{% endif %}
   <section class="chat-box card">
     {% if admin_mode and not selected_user_id %}<div class="chat-empty"><span>💬</span><h2>Select a customer</h2><p>Choose a customer on the left to open the conversation.</p></div>{% else %}
+      <div id="chat-notification" class="chat-notification" role="status" aria-live="polite" hidden></div>
       <div class="chat-head"><div><strong>{% if admin_mode %}{{(users|selectattr('id','equalto',selected_user_id)|list|first).name if selected_user_id else 'Customer'}}{% else %}BitBuy Support{% endif %}</strong><small><span class="status-dot"></span> Online support</small></div></div>
       <div id="chat-messages" class="chat-messages">{% for m in messages %}<div class="bubble-wrap {% if m.sender_id == current_user.id %}mine{% endif %}"><div class="bubble">{{m.message}}</div><small>{{m.sender.name}} · {{m.created_at.strftime('%I:%M %p')}}</small></div>{% endfor %}</div>
       <form id="chat-form" class="chat-form"><input id="chat-input" maxlength="2000" autocomplete="off" placeholder="Type your message…" required><button class="btn primary">Send</button></form>

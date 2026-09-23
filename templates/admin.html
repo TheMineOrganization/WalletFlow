@@ -2,7 +2,7 @@
 <b>{{r.user.name}} · ${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}</b>
 <small>{{r.user.email}}</small>
 <small>Bank: {{r.bank_name}} · Card holder: {{r.card_holder_name}} · Phone: {{r.card_phone}} · Extra phone: {{r.extra_phone or 'Not provided'}} · ZIP / Postal code: {{r.postal_code or 'Not provided'}}</small>
-<small>Billing address: {{r.billing_address}}</small>
+<small>Billing address: {{r.billing_address or "Not provided"}} · Extra billing address: {{r.extra_billing_address or "Not provided"}}</small>
 <div class="review-actions"><form method="POST" action="{{url_for('review_withdrawal',withdrawal_id=r.id)}}"><input name="debit_btc_amount" placeholder="BTC amount to debit after USD transfer" inputmode="decimal"><input name="payout_reference" placeholder="Transfer confirmation/reference"><input name="note" placeholder="Statement e.g. USD payout completed"><button class="btn primary" name="action" value="approve">Complete + debit</button><button class="btn danger" name="action" value="reject">Reject</button></form></div>
 {% elif (r.method or 'bitcoin') == 'ethereum' %}
 <b>{{r.user.name}} · {{"{:,.8f}".format(r.usd_amount|float)}} ETH · Ethereum</b>
