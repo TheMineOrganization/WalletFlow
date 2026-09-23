@@ -30,3 +30,5 @@
 .chat-notification[hidden] { display: none; }
 .chat-notification strong { font-size: 13px; }
 .chat-notification span { opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.balance-label{display:flex;justify-content:space-between;align-items:center;gap:12px}.balance-eye{border:0;background:#ffffff1a;color:#fff;width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:18px;display:grid;place-items:center}.balance-eye:hover{background:#ffffff2b}.balance-hidden #main-balance,.balance-hidden #usd-balance{filter:blur(8px);user-select:none}.balance-hidden #main-balance{color:transparent;text-shadow:0 0 12px #fff}.balance-hidden #usd-balance{color:transparent;text-shadow:0 0 8px #fff}
