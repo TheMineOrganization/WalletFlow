@@ -133,3 +133,25 @@ footer{color:#657b96;border-color:var(--crypto-line)}
 .balance-eye{background:rgba(255,255,255,.08)}
 .balance-eye:hover{background:rgba(66,232,255,.15)}
 @media(max-width:850px){nav{background:#07101e;border-bottom:1px solid var(--crypto-line);box-shadow:0 20px 35px rgba(0,0,0,.3)}}
+
+/* --- Live crypto market watch --- */
+.market-section{margin:0 0 30px}
+.market-heading{margin-bottom:16px;align-items:center}
+.market-heading h2{margin:7px 0 4px}
+.market-live{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:850;letter-spacing:.1em;color:#58e7b4;background:rgba(20,205,147,.08);border:1px solid rgba(20,205,147,.18);padding:8px 11px;border-radius:999px}
+.market-live span{width:7px;height:7px;border-radius:50%;background:#45e4ac;box-shadow:0 0 10px rgba(69,228,172,.8);animation:marketPulse 1.5s infinite}
+.market-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.market-card{appearance:none;text-align:left;width:100%;min-width:0;padding:16px;border:1px solid #1b2a43;border-radius:18px;background:linear-gradient(145deg,#0b1628,#0a1324);color:#eef6ff;cursor:pointer;box-shadow:0 14px 35px rgba(0,0,0,.2);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.market-card:hover{transform:translateY(-3px);border-color:rgba(66,232,255,.35);box-shadow:0 18px 42px rgba(0,0,0,.28),0 0 25px rgba(57,167,255,.08)}
+.market-top{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.coin-icon{width:35px;height:35px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(57,167,255,.18),rgba(118,103,255,.16));border:1px solid rgba(66,232,255,.12);font-weight:900;color:#70dcff}
+.market-top div{display:grid;gap:2px;min-width:0}.market-top b{font-size:13px}.market-top small{font-size:10px;color:#7187a3;font-weight:700;letter-spacing:.08em}
+.market-change{font-size:12px}.market-change.up{color:#49e6b0}.market-change.down{color:#ff7288}.market-change.loading,.market-price.loading{color:#7187a3}
+.market-chart{display:block;width:100%;height:74px;margin:10px 0 7px}
+.market-bottom{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:11px;color:#7187a3}.market-bottom strong{color:#edf6ff;font-size:13px}
+.market-status{text-align:right;color:#637b98;font-size:10px;margin-top:9px}
+.market-notice{position:fixed;right:22px;bottom:24px;z-index:20;display:flex;align-items:center;gap:11px;min-width:230px;padding:12px 15px;border:1px solid rgba(66,232,255,.22);border-radius:14px;background:rgba(6,15,29,.96);box-shadow:0 18px 50px rgba(0,0,0,.45),0 0 25px rgba(57,167,255,.1);color:#eef6ff;opacity:0;transform:translateY(12px);pointer-events:none;transition:.22s ease}
+.market-notice.show{opacity:1;transform:translateY(0)}.market-notice>span{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(135deg,#168cff,#675bff);font-weight:900}.market-notice div{display:grid;gap:2px}.market-notice small{color:#8ea1bb}
+@keyframes marketPulse{50%{opacity:.4;transform:scale(.75)}}
+@media(max-width:900px){.market-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.market-grid{grid-template-columns:1fr}.market-heading{align-items:flex-start}.market-status{text-align:left}.market-notice{left:16px;right:16px;bottom:16px}}

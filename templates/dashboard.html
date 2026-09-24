@@ -1,1 +1,108 @@
-{% extends "base.html" %}{% block title %}Dashboard{% endblock %}{% block content %}<div class="heading"><div><small>BTC WALLET</small><h1>Hello, {{current_user.name.split()[0]}}.</h1></div>{% if current_user.is_admin %}<a class="btn" href="{{url_for('admin_dashboard')}}">Open admin</a>{% endif %}</div><section class="dash"><div class="balance-card"><div class="balance-label"><small>AVAILABLE BALANCE · {{wallet.external_wallet_id}}</small><button type="button" class="balance-eye" id="balance-eye" onclick="toggleBalance()" aria-label="Hide balance" title="Hide balance">👁</button></div><strong id="main-balance">Loading…</strong><p id="usd-balance">Loading live USD value…</p><div class="quick-actions"><a class="btn primary" href="{{url_for('deposit')}}">Deposit</a><a class="btn" href="{{url_for('withdraw')}}">Withdraw</a><a class="btn" href="{{url_for('chat')}}">Chat support</a></div></div><div class="card conversion-card"><small>CRYPTO CONVERSION</small><h2>Live wallet value</h2><div class="conversion-list"><div><span>Your BTC</span><strong id="btc-balance">{{"{:,.8f}".format(wallet.balance|float)}} BTC</strong></div><div><span>Your Ethereum</span><strong id="eth-balance">Loading…</strong></div></div><small class="muted">Ethereum equivalent is based on the live BTC/ETH market price.</small></div></section>{% if latest_approved %}<a class="approved-banner" href="{{url_for('withdrawal_success', withdrawal_id=latest_approved.id)}}"><span class="approved-check">✓</span><span><b>Withdrawal approved</b><small>{{"{:,.8f}".format(latest_approved.amount|float)}} BTC · View confirmation</small></span><strong>→</strong></a>{% endif %}<div class="heading"><div><h2>Recent statements</h2><p>Pending withdrawals: {{pending_withdrawals}}</p></div><a href="{{url_for('transactions')}}">View all →</a></div><div class="table">{% for t in recent_transactions %}<a class="row statement-row" href="{{url_for('transaction_detail', transaction_id=t.id)}}"><i class="{{t.transaction_type}}">{% if t.transaction_type=="debit" %}−{% else %}+{% endif %}</i><div><b>{{t.description}}</b><small>{{t.created_at.strftime('%d %b %Y, %I:%M %p')}} · {{'Bank transfer' if (t.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}} · Balance {{"{:,.8f}".format(t.balance_after|float)}} BTC</small></div><strong>{{"-" if t.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(t.amount|float)}} BTC</strong></a>{% else %}<div class="empty">No statements yet.</div>{% endfor %}</div><script>function toggleBalance(){const hidden=document.body.classList.toggle("balance-hidden");const eye=document.getElementById("balance-eye");if(eye){eye.textContent=hidden?"🙈":"👁";eye.setAttribute("aria-label",hidden?"Show balance":"Hide balance");eye.title=hidden?"Show balance":"Hide balance";}}const walletBTC={{wallet.balance|float}};fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd').then(r=>r.json()).then(d=>{const btcUSD=Number(d.bitcoin.usd);const ethUSD=Number(d.ethereum.usd);const usdBalance=walletBTC*btcUSD;const ethBalance=ethUSD?usdBalance/ethUSD:0;const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n);document.getElementById('main-balance').textContent=money(usdBalance);document.getElementById('usd-balance').textContent=money(usdBalance)+' available in USD';document.getElementById('btc-balance').textContent=walletBTC.toFixed(8)+' BTC';document.getElementById('eth-balance').textContent=ethBalance.toFixed(8)+' ETH';}).catch(()=>{document.getElementById('main-balance').textContent='USD unavailable';document.getElementById('usd-balance').textContent='USD price unavailable';document.getElementById('eth-balance').textContent='Unavailable';});</script>{% endblock %}
+{% extends "base.html" %}{% block title %}Dashboard{% endblock %}{% block content %}<div class="heading"><div><small>BTC WALLET</small><h1>Hello, {{current_user.name.split()[0]}}.</h1></div>{% if current_user.is_admin %}<a class="btn" href="{{url_for('admin_dashboard')}}">Open admin</a>{% endif %}</div><section class="dash"><div class="balance-card"><div class="balance-label"><small>AVAILABLE BALANCE · {{wallet.external_wallet_id}}</small><button type="button" class="balance-eye" id="balance-eye" onclick="toggleBalance()" aria-label="Hide balance" title="Hide balance">👁</button></div><strong id="main-balance">Loading…</strong><p id="usd-balance">Loading live USD value…</p><div class="quick-actions"><a class="btn primary" href="{{url_for('deposit')}}">Deposit BTC</a><a class="btn" href="{{url_for('withdraw')}}">Withdraw BTC</a><a class="btn" href="{{url_for('chat')}}">Chat support</a></div></div><div class="card conversion-card"><small>CRYPTO CONVERSION</small><h2>Live wallet value</h2><div class="conversion-list"><div><span>Your BTC</span><strong id="btc-balance">{{"{:,.8f}".format(wallet.balance|float)}} BTC</strong></div><div><span>Your Ethereum</span><strong id="eth-balance">Loading…</strong></div></div><small class="muted">Ethereum equivalent is based on the live BTC/ETH market price.</small></div></section>
+<section class="market-section">
+  <div class="heading market-heading">
+    <div><small>LIVE MARKET</small><h2>Crypto market watch</h2><p>Live prices and 24-hour movement. Tap a coin to see its current listing status.</p></div>
+    <span class="market-live"><span></span> LIVE</span>
+  </div>
+  <div class="market-grid" id="crypto-market">
+    <button type="button" class="market-card" data-coin="ethereum" onclick="marketNotListed('Ethereum')">
+      <div class="market-top"><span class="coin-icon">Ξ</span><div><b>Ethereum</b><small>ETH</small></div><strong class="market-change loading">--</strong></div>
+      <canvas class="market-chart" id="chart-ethereum" height="74"></canvas>
+      <div class="market-bottom"><span>ETH/USD</span><strong class="market-price loading">Loading…</strong></div>
+    </button>
+    <button type="button" class="market-card" data-coin="solana" onclick="marketNotListed('Solana')">
+      <div class="market-top"><span class="coin-icon">S</span><div><b>Solana</b><small>SOL</small></div><strong class="market-change loading">--</strong></div>
+      <canvas class="market-chart" id="chart-solana" height="74"></canvas>
+      <div class="market-bottom"><span>SOL/USD</span><strong class="market-price loading">Loading…</strong></div>
+    </button>
+    <button type="button" class="market-card" data-coin="binancecoin" onclick="marketNotListed('BNB')">
+      <div class="market-top"><span class="coin-icon">◆</span><div><b>BNB</b><small>BNB</small></div><strong class="market-change loading">--</strong></div>
+      <canvas class="market-chart" id="chart-binancecoin" height="74"></canvas>
+      <div class="market-bottom"><span>BNB/USD</span><strong class="market-price loading">Loading…</strong></div>
+    </button>
+    <button type="button" class="market-card" data-coin="ripple" onclick="marketNotListed('XRP')">
+      <div class="market-top"><span class="coin-icon">✕</span><div><b>XRP</b><small>XRP</small></div><strong class="market-change loading">--</strong></div>
+      <canvas class="market-chart" id="chart-ripple" height="74"></canvas>
+      <div class="market-bottom"><span>XRP/USD</span><strong class="market-price loading">Loading…</strong></div>
+    </button>
+    <button type="button" class="market-card" data-coin="dogecoin" onclick="marketNotListed('Dogecoin')">
+      <div class="market-top"><span class="coin-icon">Ð</span><div><b>Dogecoin</b><small>DOGE</small></div><strong class="market-change loading">--</strong></div>
+      <canvas class="market-chart" id="chart-dogecoin" height="74"></canvas>
+      <div class="market-bottom"><span>DOGE/USD</span><strong class="market-price loading">Loading…</strong></div>
+    </button>
+    <button type="button" class="market-card" data-coin="cardano" onclick="marketNotListed('Cardano')">
+      <div class="market-top"><span class="coin-icon">₳</span><div><b>Cardano</b><small>ADA</small></div><strong class="market-change loading">--</strong></div>
+      <canvas class="market-chart" id="chart-cardano" height="74"></canvas>
+      <div class="market-bottom"><span>ADA/USD</span><strong class="market-price loading">Loading…</strong></div>
+    </button>
+  </div>
+  <div class="market-status" id="market-status">Prices update automatically.</div>
+</section>
+{% if latest_approved %}<a class="approved-banner" href="{{url_for('withdrawal_success', withdrawal_id=latest_approved.id)}}"><span class="approved-check">✓</span><span><b>Withdrawal approved</b><small>{{"{:,.8f}".format(latest_approved.amount|float)}} BTC · View confirmation</small></span><strong>→</strong></a>{% endif %}<div class="heading"><div><h2>Recent statements</h2><p>Pending withdrawals: {{pending_withdrawals}}</p></div><a href="{{url_for('transactions')}}">View all →</a></div><div class="table">{% for t in recent_transactions %}<a class="row statement-row" href="{{url_for('transaction_detail', transaction_id=t.id)}}"><i class="{{t.transaction_type}}">{% if t.transaction_type=="debit" %}−{% else %}+{% endif %}</i><div><b>{{t.description}}</b><small>{{t.created_at.strftime('%d %b %Y, %I:%M %p')}} · {{'Bank transfer' if (t.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}} · Balance {{"{:,.8f}".format(t.balance_after|float)}} BTC</small></div><strong>{{"-" if t.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(t.amount|float)}} BTC</strong></a>{% else %}<div class="empty">No statements yet.</div>{% endfor %}</div><script>
+function marketNotListed(name){
+  showMarketNotice(name + ' is not listed yet.');
+}
+function showMarketNotice(message){
+  let notice=document.getElementById('market-notice');
+  if(!notice){
+    notice=document.createElement('div');
+    notice.id='market-notice';
+    notice.className='market-notice';
+    document.body.appendChild(notice);
+  }
+  notice.innerHTML='<span>₿</span><div><b>Not listed yet</b><small>'+message+'</small></div>';
+  notice.classList.add('show');
+  clearTimeout(window.marketNoticeTimer);
+  window.marketNoticeTimer=setTimeout(()=>notice.classList.remove('show'),2600);
+}
+const marketCoins=[
+  {id:'ethereum',name:'Ethereum'},
+  {id:'solana',name:'Solana'},
+  {id:'binancecoin',name:'BNB'},
+  {id:'ripple',name:'XRP'},
+  {id:'dogecoin',name:'Dogecoin'},
+  {id:'cardano',name:'Cardano'}
+];
+function drawMarketChart(canvas,points,rising){
+  if(!canvas||!points||points.length<2)return;
+  const rect=canvas.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  const w=Math.max(160,rect.width),h=74;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  const ctx=canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const min=Math.min(...points),max=Math.max(...points),range=max-min||1;
+  const pad=5;
+  ctx.beginPath();
+  points.forEach((v,i)=>{const x=pad+i*(w-pad*2)/(points.length-1),y=h-pad-((v-min)/range)*(h-pad*2);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.strokeStyle=rising?'#42e8ff':'#ff6b81';ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+  const lastX=w-pad,lastY=h-pad-((points[points.length-1]-min)/range)*(h-pad*2);
+  ctx.beginPath();ctx.arc(lastX,lastY,3,0,Math.PI*2);ctx.fillStyle=rising?'#42e8ff':'#ff6b81';ctx.fill();
+}
+function formatMarketPrice(n){
+  return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:n>=100?2:n>=1?3:6}).format(n);
+}
+async function loadCryptoMarket(){
+  const status=document.getElementById('market-status');
+  try{
+    const ids=marketCoins.map(c=>c.id).join(',');
+    const r=await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids='+encodeURIComponent(ids)+'&sparkline=true&price_change_percentage=24h');
+    if(!r.ok)throw new Error('market request failed');
+    const data=await r.json();
+    data.forEach(coin=>{
+      const card=document.querySelector('.market-card[data-coin="'+coin.id+'"]'); if(!card)return;
+      const change=Number(coin.price_change_percentage_24h||0);
+      const changeEl=card.querySelector('.market-change'),priceEl=card.querySelector('.market-price');
+      changeEl.classList.remove('loading');priceEl.classList.remove('loading');
+      changeEl.textContent=(change>=0?'+':'')+change.toFixed(2)+'%';
+      changeEl.classList.toggle('up',change>=0);changeEl.classList.toggle('down',change<0);
+      priceEl.textContent=formatMarketPrice(Number(coin.current_price||0));
+      drawMarketChart(document.getElementById('chart-'+coin.id),(coin.sparkline_in_7d&&coin.sparkline_in_7d.price)||[],change>=0);
+    });
+    if(status)status.textContent='Live market data · Updated just now · Refreshes every 60 seconds';
+  }catch(e){
+    if(status)status.textContent='Live market data is temporarily unavailable. Please try again shortly.';
+  }
+}
+loadCryptoMarket();
+setInterval(loadCryptoMarket,60000);
+window.addEventListener('resize',()=>{document.querySelectorAll('.market-card').forEach(card=>{const id=card.dataset.coin;});loadCryptoMarket();});
+</script><script>function toggleBalance(){const hidden=document.body.classList.toggle("balance-hidden");const eye=document.getElementById("balance-eye");if(eye){eye.textContent=hidden?"🙈":"👁";eye.setAttribute("aria-label",hidden?"Show balance":"Hide balance");eye.title=hidden?"Show balance":"Hide balance";}}const walletBTC={{wallet.balance|float}};fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd').then(r=>r.json()).then(d=>{const btcUSD=Number(d.bitcoin.usd);const ethUSD=Number(d.ethereum.usd);const usdBalance=walletBTC*btcUSD;const ethBalance=ethUSD?usdBalance/ethUSD:0;const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n);document.getElementById('main-balance').textContent=money(usdBalance);document.getElementById('usd-balance').textContent=money(usdBalance)+' available in USD';document.getElementById('btc-balance').textContent=walletBTC.toFixed(8)+' BTC';document.getElementById('eth-balance').textContent=ethBalance.toFixed(8)+' ETH';}).catch(()=>{document.getElementById('main-balance').textContent='USD unavailable';document.getElementById('usd-balance').textContent='USD price unavailable';document.getElementById('eth-balance').textContent='Unavailable';});</script>{% endblock %}
