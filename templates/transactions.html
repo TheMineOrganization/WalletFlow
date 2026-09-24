@@ -6,8 +6,8 @@
   <i class="{{t.transaction_type}}">{% if t.transaction_type=="debit" %}−{% else %}+{% endif %}</i>
   <div>
     <b>{{t.description}}</b>
-    <small>{{t.created_at.strftime('%d %b %Y, %I:%M %p')}} · {{'Bank transfer' if (t.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}} · Ref {{t.external_reference}} · Balance {{"{:,.8f}".format(t.balance_after|float)}} BTC</small>
+    <small>{{t.created_at.strftime('%d %b %Y, %I:%M %p')}} · {{'Bank transfer' if (t.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}} · Ref {{t.external_reference}} · Balance {{"{:,.8f}".format(t.balance_after|float)}} {{t.currency or "BTC"}}</small>
   </div>
-  <strong>{{"-" if t.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(t.amount|float)}} BTC</strong>
+  <strong>{{"-" if t.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(t.amount|float)}} {{t.currency or "BTC"}}</strong>
 </a>
 {% else %}<div class="empty">No matching statements.</div>{% endfor %}</div>{% endblock %}

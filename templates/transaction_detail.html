@@ -3,9 +3,9 @@
 <div class="card statement-detail">
   <div><span>Transfer type</span><strong>{{'Bank transfer' if (transaction.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}}</strong></div>
   <div><span>Transaction</span><strong>{{'Debit' if transaction.transaction_type == 'debit' else 'Credit'}}</strong></div>
-  <div><span>Amount</span><strong>{{"-" if transaction.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(transaction.amount|float)}} BTC</strong></div>
+  <div><span>Amount</span><strong>{{"-" if transaction.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(transaction.amount|float)}} {{transaction.currency or "BTC"}}</strong></div>
   <div><span>Time</span><strong>{{transaction.created_at.strftime('%d %b %Y, %I:%M:%S %p')}}</strong></div>
   <div><span>Reference</span><strong class="mono">{{transaction.external_reference}}</strong></div>
-  <div><span>Balance after</span><strong>{{"{:,.8f}".format(transaction.balance_after|float)}} BTC</strong></div>
+  <div><span>Balance after</span><strong>{{"{:,.8f}".format(transaction.balance_after|float)}} {{transaction.currency or "BTC"}}</strong></div>
 </div>
 {% endblock %}

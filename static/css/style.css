@@ -155,3 +155,30 @@ footer{color:#657b96;border-color:var(--crypto-line)}
 @keyframes marketPulse{50%{opacity:.4;transform:scale(.75)}}
 @media(max-width:900px){.market-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.market-grid{grid-template-columns:1fr}.market-heading{align-items:flex-start}.market-status{text-align:left}.market-notice{left:16px;right:16px;bottom:16px}}
+
+/* --- Multi-asset wallet additions --- */
+.balance-picker-wrap{position:relative;margin:14px 0 4px;width:min(360px,100%);z-index:2}
+.balance-picker{appearance:none;width:100%;padding:14px 45px 14px 17px;border:1px solid rgba(66,232,255,.28);border-radius:15px;background:linear-gradient(135deg,rgba(57,167,255,.18),rgba(118,103,255,.18));color:#fff;font-weight:800;letter-spacing:.01em;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 25px rgba(0,0,0,.18);outline:none}
+.balance-picker:hover,.balance-picker:focus{border-color:rgba(66,232,255,.65);box-shadow:0 0 0 3px rgba(66,232,255,.08),0 10px 30px rgba(0,0,0,.22)}
+.balance-picker option{background:#0b1628;color:#eef6ff}
+.balance-picker-glow{position:absolute;right:17px;top:50%;width:8px;height:8px;border-right:2px solid #42e8ff;border-bottom:2px solid #42e8ff;transform:translateY(-65%) rotate(45deg);pointer-events:none;z-index:1}
+.balance-picker-wrap:after{content:"FLOAT";position:absolute;right:42px;top:-7px;font-size:8px;font-weight:900;letter-spacing:.12em;color:#70dcff;background:#081426;border:1px solid rgba(66,232,255,.2);border-radius:999px;padding:3px 6px}
+.crypto-deposit-card{overflow:hidden}
+.crypto-deposit-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+.network-badge{font-size:10px;font-weight:900;letter-spacing:.1em;padding:8px 10px;border-radius:999px;color:#70dcff;background:rgba(57,167,255,.1);border:1px solid rgba(66,232,255,.18);white-space:nowrap}
+.deposit-asset-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}
+.deposit-asset{appearance:none;border:1px solid #1b2a43;background:linear-gradient(145deg,#0b1628,#091221);color:#eef6ff;border-radius:15px;padding:12px;text-align:left;display:flex;align-items:center;gap:10px;cursor:pointer;min-width:0;transition:.18s}
+.deposit-asset:hover,.deposit-asset.selected{border-color:rgba(66,232,255,.6);transform:translateY(-2px);box-shadow:0 0 25px rgba(57,167,255,.1)}
+.deposit-asset.selected{background:linear-gradient(145deg,rgba(57,167,255,.16),rgba(118,103,255,.14))}
+.deposit-asset>span:last-child{display:grid;gap:2px;min-width:0}.deposit-asset b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.deposit-asset small{font-size:9px;color:#7187a3;font-weight:800;letter-spacing:.08em}
+.deposit-coin{width:32px;height:32px;flex:0 0 32px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(57,167,255,.2),rgba(118,103,255,.2));border:1px solid rgba(66,232,255,.12);color:#70dcff;font-weight:900}
+.crypto-address-panel{position:relative;padding:17px;border:1px solid rgba(66,232,255,.18);border-radius:17px;background:radial-gradient(circle at 90% 15%,rgba(66,232,255,.09),transparent 25%),linear-gradient(145deg,#07111f,#0a1628);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.address-panel-top{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:10px;font-size:11px;font-weight:800;color:#b8c9dd}
+.address-live{font-size:9px;color:#49e6b0;letter-spacing:.08em}.address-live:first-letter{font-size:7px}
+.crypto-address{font-size:13px!important;line-height:1.65;color:#dff7ff!important;background:#030812!important;border:1px solid rgba(66,232,255,.16)!important;box-shadow:inset 0 0 28px rgba(0,0,0,.3);padding:15px!important}
+.copy-address-btn{margin-top:10px;border:1px solid rgba(66,232,255,.2);background:rgba(57,167,255,.1);color:#70dcff;border-radius:10px;padding:9px 12px;font-weight:800;cursor:pointer}.copy-address-btn:hover{background:rgba(57,167,255,.18)}
+.crypto-admin-balances{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+.admin-crypto-balance{display:flex;align-items:center;gap:10px;padding:14px;border:1px solid #1b2a43;border-radius:15px;background:linear-gradient(145deg,#0b1628,#091221);box-shadow:0 12px 28px rgba(0,0,0,.16)}
+.admin-coin{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(57,167,255,.12);color:#70dcff;font-weight:900}.admin-crypto-balance div{display:grid;gap:3px;min-width:0}.admin-crypto-balance small{color:#7187a3;font-size:9px;font-weight:800}.admin-crypto-balance strong{font-size:12px;overflow-wrap:anywhere}
+@media(max-width:900px){.deposit-asset-grid{grid-template-columns:repeat(2,1fr)}.crypto-admin-balances{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.crypto-deposit-heading{flex-direction:column}.deposit-asset-grid{grid-template-columns:1fr 1fr}.crypto-admin-balances{grid-template-columns:1fr}.balance-picker-wrap{width:100%}.address-panel-top{align-items:flex-start;flex-direction:column}}

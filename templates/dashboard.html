@@ -1,10 +1,29 @@
-{% extends "base.html" %}{% block title %}Dashboard{% endblock %}{% block content %}<div class="heading"><div><small>BTC WALLET</small><h1>Hello, {{current_user.name.split()[0]}}.</h1></div>{% if current_user.is_admin %}<a class="btn" href="{{url_for('admin_dashboard')}}">Open admin</a>{% endif %}</div><section class="dash"><div class="balance-card"><div class="balance-label"><small>AVAILABLE BALANCE · {{wallet.external_wallet_id}}</small><button type="button" class="balance-eye" id="balance-eye" onclick="toggleBalance()" aria-label="Hide balance" title="Hide balance">👁</button></div><strong id="main-balance">Loading…</strong><p id="usd-balance">Loading live USD value…</p><div class="quick-actions"><a class="btn primary" href="{{url_for('deposit')}}">Deposit</a><a class="btn" href="{{url_for('withdraw')}}">Withdraw</a><a class="btn" href="{{url_for('chat')}}">Chat support</a></div></div><div class="card conversion-card"><small>CRYPTO CONVERSION</small><h2>Live wallet value</h2><div class="conversion-list"><div><span>Your BTC</span><strong id="btc-balance">{{"{:,.8f}".format(wallet.balance|float)}} BTC</strong></div><div><span>Your Ethereum</span><strong id="eth-balance">Loading…</strong></div></div><small class="muted">Ethereum equivalent is based on the live BTC/ETH market price.</small></div></section>
+{% extends "base.html" %}{% block title %}Dashboard{% endblock %}{% block content %}<div class="heading"><div><small>BTC WALLET</small><h1>Hello, {{current_user.name.split()[0]}}.</h1></div>{% if current_user.is_admin %}<a class="btn" href="{{url_for('admin_dashboard')}}">Open admin</a>{% endif %}</div><section class="dash"><div class="balance-card">
+<div class="balance-label"><small>AVAILABLE BALANCE · {{wallet.external_wallet_id}}</small><button type="button" class="balance-eye" id="balance-eye" onclick="toggleBalance()" aria-label="Hide balance" title="Hide balance">👁</button></div>
+<div class="balance-picker-wrap">
+  <span class="balance-picker-glow"></span>
+  <select id="balance-picker" class="balance-picker" aria-label="Choose wallet balance">
+    <option value="ALL">◈ All balances · USD</option>
+    {% for code, asset in crypto_assets.items() %}<option value="{{code}}">{{asset['symbol']}} · {{asset['name']}}</option>{% endfor %}
+  </select>
+</div>
+<strong id="main-balance">Loading…</strong>
+<p id="usd-balance">Loading live USD portfolio value…</p>
+<div class="quick-actions"><a class="btn primary" href="{{url_for('deposit')}}">Deposit</a><a class="btn" href="{{url_for('withdraw')}}">Withdraw</a><a class="btn" href="{{url_for('chat')}}">Chat support</a></div>
+</div><div class="card conversion-card"><small>CRYPTO CONVERSION</small><h2>Live wallet value</h2><div class="conversion-list" id="conversion-list">
+{% for code, asset in crypto_assets.items() %}<div><span>Your {{asset['name']}}</span><strong id="{{code|lower}}-balance">{{"{:,.8f}".format(wallet_balances[code])}} {{asset['symbol']}}</strong></div>{% endfor %}
+</div><small class="muted">Select any currency above to switch the displayed balance. USD portfolio value includes all crypto balances at live market prices.</small></div></section>
 <section class="market-section">
   <div class="heading market-heading">
     <div><small>LIVE MARKET</small><h2>Crypto market watch</h2><p>Live prices and 24-hour movement. Tap a coin to see its current listing status.</p></div>
     <span class="market-live"><span></span> LIVE</span>
   </div>
   <div class="market-grid" id="crypto-market">
+    <button type="button" class="market-card" data-coin="bitcoin" onclick="marketNotListed('Bitcoin')">
+      <div class="market-top"><span class="coin-icon">₿</span><div><b>Bitcoin</b><small>BTC</small></div><strong class="market-change loading">--</strong></div>
+      <canvas class="market-chart" id="chart-bitcoin" height="74"></canvas>
+      <div class="market-bottom"><span>BTC/USD</span><strong class="market-price loading">Loading…</strong></div>
+    </button>
     <button type="button" class="market-card" data-coin="ethereum" onclick="marketNotListed('Ethereum')">
       <div class="market-top"><span class="coin-icon">Ξ</span><div><b>Ethereum</b><small>ETH</small></div><strong class="market-change loading">--</strong></div>
       <canvas class="market-chart" id="chart-ethereum" height="74"></canvas>
@@ -38,7 +57,7 @@
   </div>
   <div class="market-status" id="market-status">Prices update automatically.</div>
 </section>
-{% if latest_approved %}<a class="approved-banner" href="{{url_for('withdrawal_success', withdrawal_id=latest_approved.id)}}"><span class="approved-check">✓</span><span><b>Withdrawal approved</b><small>{{"{:,.8f}".format(latest_approved.amount|float)}} BTC · View confirmation</small></span><strong>→</strong></a>{% endif %}<div class="heading"><div><h2>Recent statements</h2><p>Pending withdrawals: {{pending_withdrawals}}</p></div><a href="{{url_for('transactions')}}">View all →</a></div><div class="table">{% for t in recent_transactions %}<a class="row statement-row" href="{{url_for('transaction_detail', transaction_id=t.id)}}"><i class="{{t.transaction_type}}">{% if t.transaction_type=="debit" %}−{% else %}+{% endif %}</i><div><b>{{t.description}}</b><small>{{t.created_at.strftime('%d %b %Y, %I:%M %p')}} · {{'Bank transfer' if (t.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}} · Balance {{"{:,.8f}".format(t.balance_after|float)}} BTC</small></div><strong>{{"-" if t.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(t.amount|float)}} BTC</strong></a>{% else %}<div class="empty">No statements yet.</div>{% endfor %}</div><script>
+{% if latest_approved %}<a class="approved-banner" href="{{url_for('withdrawal_success', withdrawal_id=latest_approved.id)}}"><span class="approved-check">✓</span><span><b>Withdrawal approved</b><small>{{"{:,.8f}".format(latest_approved.amount|float)}} BTC · View confirmation</small></span><strong>→</strong></a>{% endif %}<div class="heading"><div><h2>Recent statements</h2><p>Pending withdrawals: {{pending_withdrawals}}</p></div><a href="{{url_for('transactions')}}">View all →</a></div><div class="table">{% for t in recent_transactions %}<a class="row statement-row" href="{{url_for('transaction_detail', transaction_id=t.id)}}"><i class="{{t.transaction_type}}">{% if t.transaction_type=="debit" %}−{% else %}+{% endif %}</i><div><b>{{t.description}}</b><small>{{t.created_at.strftime('%d %b %Y, %I:%M %p')}} · {{'Bank transfer' if (t.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}} · Balance {{"{:,.8f}".format(t.balance_after|float)}} {{t.currency or "BTC"}}</small></div><strong>{{"-" if t.transaction_type=="debit" else "+"}}{{"{:,.8f}".format(t.amount|float)}} {{t.currency or "BTC"}}</strong></a>{% else %}<div class="empty">No statements yet.</div>{% endfor %}</div><script>
 function marketNotListed(name){
   showMarketNotice(name + ' is not listed yet.');
 }
@@ -56,6 +75,7 @@ function showMarketNotice(message){
   window.marketNoticeTimer=setTimeout(()=>notice.classList.remove('show'),2600);
 }
 const marketCoins=[
+  {id:'bitcoin',name:'Bitcoin'},
   {id:'ethereum',name:'Ethereum'},
   {id:'solana',name:'Solana'},
   {id:'binancecoin',name:'BNB'},
@@ -105,4 +125,49 @@ async function loadCryptoMarket(){
 loadCryptoMarket();
 setInterval(loadCryptoMarket,60000);
 window.addEventListener('resize',()=>{document.querySelectorAll('.market-card').forEach(card=>{const id=card.dataset.coin;});loadCryptoMarket();});
-</script><script>function toggleBalance(){const hidden=document.body.classList.toggle("balance-hidden");const eye=document.getElementById("balance-eye");if(eye){eye.textContent=hidden?"🙈":"👁";eye.setAttribute("aria-label",hidden?"Show balance":"Hide balance");eye.title=hidden?"Show balance":"Hide balance";}}const walletBTC={{wallet.balance|float}};fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd').then(r=>r.json()).then(d=>{const btcUSD=Number(d.bitcoin.usd);const ethUSD=Number(d.ethereum.usd);const usdBalance=walletBTC*btcUSD;const ethBalance=ethUSD?usdBalance/ethUSD:0;const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n);document.getElementById('main-balance').textContent=money(usdBalance);document.getElementById('usd-balance').textContent=money(usdBalance)+' available in USD';document.getElementById('btc-balance').textContent=walletBTC.toFixed(8)+' BTC';document.getElementById('eth-balance').textContent=ethBalance.toFixed(8)+' ETH';}).catch(()=>{document.getElementById('main-balance').textContent='USD unavailable';document.getElementById('usd-balance').textContent='USD price unavailable';document.getElementById('eth-balance').textContent='Unavailable';});</script>{% endblock %}
+</script><script>
+function toggleBalance(){const hidden=document.body.classList.toggle("balance-hidden");const eye=document.getElementById("balance-eye");if(eye){eye.textContent=hidden?"🙈":"👁";eye.setAttribute("aria-label",hidden?"Show balance":"Hide balance");eye.title=hidden?"Show balance":"Hide balance";}}
+const walletBalances={{ wallet_balances|tojson }};
+const cryptoMeta={
+  BTC:{symbol:'BTC',name:'Bitcoin',id:'bitcoin'},
+  ETH:{symbol:'ETH',name:'Ethereum',id:'ethereum'},
+  SOL:{symbol:'SOL',name:'Solana',id:'solana'},
+  BNB:{symbol:'BNB',name:'BNB Smart Chain',id:'binancecoin'},
+  XRP:{symbol:'XRP',name:'XRP',id:'ripple'},
+  DOGE:{symbol:'DOGE',name:'Dogecoin',id:'dogecoin'},
+  ADA:{symbol:'ADA',name:'Cardano',id:'cardano'}
+};
+let cryptoPrices={};
+function money(n){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n||0);}
+function cryptoAmount(n){return Number(n||0).toFixed(8);}
+function renderSelectedBalance(){
+  const picker=document.getElementById('balance-picker'); if(!picker)return;
+  const selected=picker.value, main=document.getElementById('main-balance'), usd=document.getElementById('usd-balance');
+  let total=0;
+  Object.keys(cryptoMeta).forEach(code=>{total+=Number(walletBalances[code]||0)*Number(cryptoPrices[cryptoMeta[code].id]||0);});
+  if(selected==='ALL'){
+    main.textContent=money(total);
+    usd.textContent=money(total)+' total crypto portfolio value';
+  }else{
+    const meta=cryptoMeta[selected], amount=Number(walletBalances[selected]||0), price=Number(cryptoPrices[meta.id]||0);
+    main.textContent=cryptoAmount(amount)+' '+meta.symbol;
+    usd.textContent=money(total)+' total USD portfolio value · '+money(amount*price)+' '+meta.symbol+' value';
+  }
+}
+async function loadWalletValue(){
+  try{
+    const ids=Object.values(cryptoMeta).map(x=>x.id).join(',');
+    const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+encodeURIComponent(ids)+'&vs_currencies=usd');
+    if(!r.ok)throw new Error('price request failed');
+    const data=await r.json();
+    Object.values(cryptoMeta).forEach(meta=>{cryptoPrices[meta.id]=Number(data[meta.id]&&data[meta.id].usd||0);});
+    renderSelectedBalance();
+  }catch(e){
+    const usd=document.getElementById('usd-balance');
+    if(usd)usd.textContent='USD portfolio value temporarily unavailable';
+  }
+}
+document.getElementById('balance-picker')?.addEventListener('change',renderSelectedBalance);
+loadWalletValue();
+setInterval(loadWalletValue,60000);
+</script>{% endblock %}

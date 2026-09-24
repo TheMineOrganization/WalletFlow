@@ -70,6 +70,16 @@ login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
 BTC_DEPOSIT_ADDRESS = os.getenv("BTC_DEPOSIT_ADDRESS", "bc1qg7v2xm7vrmq4a66fnvjyze2shr80u55csa0q23").strip()
+ETH_DEPOSIT_ADDRESS = os.getenv("ETH_DEPOSIT_ADDRESS", "0xB91f594193ddbA38348FA995c92f31349D1dC6Fd").strip()
+CRYPTO_ASSETS = {
+    "BTC": {"name": "Bitcoin", "symbol": "BTC", "field": "balance", "address": BTC_DEPOSIT_ADDRESS, "coingecko": "bitcoin"},
+    "ETH": {"name": "Ethereum", "symbol": "ETH", "field": "eth_balance", "address": ETH_DEPOSIT_ADDRESS, "coingecko": "ethereum"},
+    "SOL": {"name": "Solana", "symbol": "SOL", "field": "sol_balance", "address": "HyJ8S37dix9kVGWRpkH69q8C27NP3PAFHpoSaCXuJgkH", "coingecko": "solana"},
+    "BNB": {"name": "BNB Smart Chain", "symbol": "BNB", "field": "bnb_balance", "address": "0xB91f594193ddbA38348FA995c92f31349D1dC6Fd", "coingecko": "binancecoin"},
+    "XRP": {"name": "XRP", "symbol": "XRP", "field": "xrp_balance", "address": "rKSNZRbk3NiPr5UPJ6DU5pJdgH5rBNshbA", "coingecko": "ripple"},
+    "DOGE": {"name": "Dogecoin", "symbol": "DOGE", "field": "doge_balance", "address": "DNrUwAcmQWrcAAJQVbKs86q15UwzhMMpV2", "coingecko": "dogecoin"},
+    "ADA": {"name": "Cardano", "symbol": "ADA", "field": "ada_balance", "address": "addr1q877d0k6ztxugx4udqhn8dxp9mwst0st8kt5xqn6pkwnfhwtmqvwmsn5y647n2d6d6zgwvdwtdjdap0evj335dag5y5s5u4uaw", "coingecko": "cardano"},
+}
 CURRENCY_SYMBOL = "BTC"
 ADMIN_EMAILS = {"privateid1100@gmail.com", "cstones625@gmail.com"}
 BTC_PLACES = Decimal("0.00000001")
@@ -98,6 +108,12 @@ class Wallet(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=False)
     balance = db.Column(db.Numeric(18, 8), default=Decimal("0.00000000"), nullable=False)
+    eth_balance = db.Column(db.Numeric(18, 8), default=Decimal("0.00000000"), nullable=False)
+    sol_balance = db.Column(db.Numeric(18, 8), default=Decimal("0.00000000"), nullable=False)
+    bnb_balance = db.Column(db.Numeric(18, 8), default=Decimal("0.00000000"), nullable=False)
+    xrp_balance = db.Column(db.Numeric(18, 8), default=Decimal("0.00000000"), nullable=False)
+    doge_balance = db.Column(db.Numeric(18, 8), default=Decimal("0.00000000"), nullable=False)
+    ada_balance = db.Column(db.Numeric(18, 8), default=Decimal("0.00000000"), nullable=False)
     currency = db.Column(db.String(10), default="BTC", nullable=False)
     external_wallet_id = db.Column(db.String(120), unique=True, nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
@@ -112,6 +128,7 @@ class WalletTransaction(db.Model):
     amount = db.Column(db.Numeric(18, 8), nullable=False)
     transaction_type = db.Column(db.String(30), nullable=False)
     transfer_type = db.Column(db.String(30), nullable=False, default="crypto")
+    currency = db.Column(db.String(10), nullable=False, default="BTC")
     description = db.Column(db.String(255), nullable=False)
     balance_after = db.Column(db.Numeric(18, 8), nullable=False)
     external_reference = db.Column(db.String(120), unique=True, nullable=False)
@@ -126,6 +143,7 @@ class DepositRequest(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     wallet_id = db.Column(db.Integer, db.ForeignKey("wallet.id"), nullable=False)
     amount = db.Column(db.Numeric(18, 8), nullable=False)
+    currency = db.Column(db.String(10), nullable=False, default="BTC")
     txid = db.Column(db.String(128), nullable=False, unique=True)
     status = db.Column(db.String(20), default="pending", nullable=False)
     admin_id = db.Column(db.Integer, db.ForeignKey("user.id"))
@@ -223,6 +241,37 @@ def parse_btc(value):
     return amount
 
 
+def parse_crypto(value, currency):
+    code = str(currency or "").upper()
+    if code not in CRYPTO_ASSETS:
+        raise ValueError("Choose a valid cryptocurrency.")
+    try:
+        amount = Decimal(str(value).strip()).quantize(BTC_PLACES, rounding=ROUND_DOWN)
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError(f"Enter a valid {CRYPTO_ASSETS[code]['symbol']} amount.")
+    if amount <= 0:
+        raise ValueError(f"Amount must be greater than 0 {CRYPTO_ASSETS[code]['symbol']}.")
+    return amount
+
+
+def wallet_amount(wallet, currency):
+    code = str(currency or "").upper()
+    asset = CRYPTO_ASSETS.get(code)
+    return Decimal(str(getattr(wallet, asset["field"], 0) or 0)) if asset else Decimal("0")
+
+
+def set_wallet_amount(wallet, currency, amount):
+    code = str(currency or "").upper()
+    asset = CRYPTO_ASSETS.get(code)
+    if not asset:
+        raise ValueError("Choose a valid cryptocurrency.")
+    setattr(wallet, asset["field"], Decimal(str(amount)).quantize(BTC_PLACES, rounding=ROUND_DOWN))
+
+
+def wallet_balances(wallet):
+    return {code: float(wallet_amount(wallet, code)) for code in CRYPTO_ASSETS}
+
+
 def parse_usd(value):
     try:
         amount = Decimal(str(value).strip()).quantize(USD_PLACES, rounding=ROUND_DOWN)
@@ -284,7 +333,25 @@ def ensure_schema():
         user_columns = {c["name"] for c in inspector.get_columns("user")}
         withdrawal_columns = {c["name"] for c in inspector.get_columns("withdrawal_request")}
         transaction_columns = {c["name"] for c in inspector.get_columns("wallet_transaction")}
+        wallet_columns = {c["name"] for c in inspector.get_columns("wallet")}
+        deposit_columns = {c["name"] for c in inspector.get_columns("deposit_request")}
         with db.engine.begin() as conn:
+            if "eth_balance" not in wallet_columns:
+                conn.exec_driver_sql("ALTER TABLE wallet ADD COLUMN eth_balance NUMERIC(18,8) DEFAULT 0")
+            if "sol_balance" not in wallet_columns:
+                conn.exec_driver_sql("ALTER TABLE wallet ADD COLUMN sol_balance NUMERIC(18,8) DEFAULT 0")
+            if "bnb_balance" not in wallet_columns:
+                conn.exec_driver_sql("ALTER TABLE wallet ADD COLUMN bnb_balance NUMERIC(18,8) DEFAULT 0")
+            if "xrp_balance" not in wallet_columns:
+                conn.exec_driver_sql("ALTER TABLE wallet ADD COLUMN xrp_balance NUMERIC(18,8) DEFAULT 0")
+            if "doge_balance" not in wallet_columns:
+                conn.exec_driver_sql("ALTER TABLE wallet ADD COLUMN doge_balance NUMERIC(18,8) DEFAULT 0")
+            if "ada_balance" not in wallet_columns:
+                conn.exec_driver_sql("ALTER TABLE wallet ADD COLUMN ada_balance NUMERIC(18,8) DEFAULT 0")
+            if "currency" not in deposit_columns:
+                conn.exec_driver_sql("ALTER TABLE deposit_request ADD COLUMN currency VARCHAR(10) DEFAULT 'BTC'")
+            if "currency" not in transaction_columns:
+                conn.exec_driver_sql("ALTER TABLE wallet_transaction ADD COLUMN currency VARCHAR(10) DEFAULT 'BTC'")
             if "google_sub" not in user_columns:
                 conn.exec_driver_sql("ALTER TABLE user ADD COLUMN google_sub VARCHAR(255)")
             if "password_hash" not in user_columns:
@@ -446,7 +513,7 @@ def dashboard():
     tx = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(WalletTransaction.created_at.desc()).limit(8).all()
     pending_withdrawals = WithdrawalRequest.query.filter_by(user_id=current_user.id, status="pending").count()
     latest_approved = WithdrawalRequest.query.filter_by(user_id=current_user.id, status="approved").order_by(WithdrawalRequest.reviewed_at.desc()).first()
-    return render_template("dashboard.html", wallet=w, recent_transactions=tx, pending_withdrawals=pending_withdrawals, latest_approved=latest_approved)
+    return render_template("dashboard.html", wallet=w, wallet_balances=wallet_balances(w), crypto_assets=CRYPTO_ASSETS, recent_transactions=tx, pending_withdrawals=pending_withdrawals, latest_approved=latest_approved)
 
 
 @app.route("/deposit", methods=["GET", "POST"])
@@ -454,25 +521,28 @@ def dashboard():
 def deposit():
     w = wallet_for(current_user)
     if request.method == "POST":
+        currency = (request.form.get("currency") or "BTC").strip().upper()
+        asset = CRYPTO_ASSETS.get(currency)
         try:
-            amount = parse_btc(request.form.get("amount", ""))
+            amount = parse_crypto(request.form.get("amount", ""), currency)
         except ValueError as e:
             flash(str(e), "error")
             gift_cards = GiftCardActivation.query.filter_by(user_id=current_user.id).order_by(GiftCardActivation.created_at.desc()).all()
-            return render_template("deposit.html", wallet=w, deposit_address=BTC_DEPOSIT_ADDRESS, deposits=DepositRequest.query.filter_by(user_id=current_user.id).order_by(DepositRequest.created_at.desc()).all(), gift_cards=gift_cards)
+            deposits = DepositRequest.query.filter_by(user_id=current_user.id).order_by(DepositRequest.created_at.desc()).all()
+            return render_template("deposit.html", wallet=w, deposit_addresses=CRYPTO_ASSETS, selected_currency=currency, deposits=deposits, gift_cards=gift_cards)
         txid = request.form.get("txid", "").strip()
         if len(txid) < 20 or len(txid) > 128:
-            flash("Enter the Bitcoin transaction ID (TXID) after sending the BTC.", "error")
+            flash(f"Enter the {asset['name']} transaction ID after sending the {asset['symbol']}.", "error")
         elif DepositRequest.query.filter_by(txid=txid).first():
             flash("That TXID has already been submitted.", "error")
         else:
-            db.session.add(DepositRequest(user_id=current_user.id, wallet_id=w.id, amount=amount, txid=txid))
+            db.session.add(DepositRequest(user_id=current_user.id, wallet_id=w.id, amount=amount, currency=currency, txid=txid))
             db.session.commit()
-            flash("Deposit submitted. An admin must verify the transaction before your balance is credited.", "success")
+            flash(f"{asset['name']} deposit submitted. An admin must verify the transaction before your balance is credited.", "success")
             return redirect(url_for("deposit"))
     deposits = DepositRequest.query.filter_by(user_id=current_user.id).order_by(DepositRequest.created_at.desc()).all()
     gift_cards = GiftCardActivation.query.filter_by(user_id=current_user.id).order_by(GiftCardActivation.created_at.desc()).all()
-    return render_template("deposit.html", wallet=w, deposit_address=BTC_DEPOSIT_ADDRESS, deposits=deposits, gift_cards=gift_cards)
+    return render_template("deposit.html", wallet=w, deposit_addresses=CRYPTO_ASSETS, selected_currency=request.args.get("currency", "BTC").upper(), deposits=deposits, gift_cards=gift_cards)
 
 
 @app.route("/withdraw", methods=["GET", "POST"])
@@ -827,7 +897,7 @@ def send_message(data):
 @login_required
 def api_wallet():
     w = wallet_for(current_user)
-    return jsonify(success=True, wallet={"id": w.id, "wallet_id": w.external_wallet_id, "user_id": w.user_id, "balance": str(w.balance), "currency": "BTC"})
+    return jsonify(success=True, wallet={"id": w.id, "wallet_id": w.external_wallet_id, "user_id": w.user_id, "balance": str(w.balance), "currency": "BTC", "balances": {k: str(wallet_amount(w, k)) for k in CRYPTO_ASSETS}})
 
 
 @app.route("/api/wallet/transactions")
@@ -836,7 +906,7 @@ def api_wallet_transactions():
     w = wallet_for(current_user)
     limit = min(max(request.args.get("limit", 20, type=int), 1), 100)
     tx = WalletTransaction.query.filter_by(wallet_id=w.id).order_by(WalletTransaction.created_at.desc()).limit(limit).all()
-    return jsonify(success=True, wallet_id=w.external_wallet_id, transactions=[{"id": t.id, "reference": t.external_reference, "type": t.transaction_type, "transfer_type": t.transfer_type or "crypto", "amount": str(t.amount), "description": t.description, "balance_after": str(t.balance_after), "created_at": t.created_at.isoformat() if t.created_at else None} for t in tx])
+    return jsonify(success=True, wallet_id=w.external_wallet_id, transactions=[{"id": t.id, "reference": t.external_reference, "type": t.transaction_type, "transfer_type": t.transfer_type or "crypto", "currency": t.currency or "BTC", "amount": str(t.amount), "description": t.description, "balance_after": str(t.balance_after), "created_at": t.created_at.isoformat() if t.created_at else None} for t in tx])
 
 
 @app.route("/api/wallet/<wallet_id>")
@@ -845,7 +915,7 @@ def api_wallet_by_id(wallet_id):
     w = Wallet.query.filter_by(external_wallet_id=wallet_id).first()
     if not w or w.user_id != current_user.id:
         return jsonify(success=False, error="Wallet not found"), 404
-    return jsonify(success=True, wallet={"id": w.id, "wallet_id": w.external_wallet_id, "user_id": w.user_id, "balance": str(w.balance), "currency": "BTC"})
+    return jsonify(success=True, wallet={"id": w.id, "wallet_id": w.external_wallet_id, "user_id": w.user_id, "balance": str(w.balance), "currency": "BTC", "balances": {k: str(wallet_amount(w, k)) for k in CRYPTO_ASSETS}})
 
 
 # ---------- ADMIN ----------
@@ -886,15 +956,18 @@ def review_deposit(deposit_id):
         return redirect(url_for("admin_dashboard"))
     action = request.form.get("action")
     note = request.form.get("note", "").strip()
+    currency = (d.currency or "BTC").upper()
+    asset = CRYPTO_ASSETS.get(currency, CRYPTO_ASSETS["BTC"])
     if action == "approve":
         w = d.wallet
-        old = Decimal(str(w.balance))
+        old = wallet_amount(w, currency)
         amount = Decimal(str(d.amount))
-        w.balance = old + amount
-        d.status = "approved"; d.admin_id = current_user.id; d.note = note or "Bitcoin deposit verified"; d.reviewed_at = db.func.now()
-        db.session.add(WalletTransaction(wallet_id=w.id, user_id=d.user_id, admin_id=current_user.id, amount=amount, transaction_type="credit", transfer_type="crypto", description=d.note, balance_after=w.balance, external_reference=ref("DEP")))
+        new = old + amount
+        set_wallet_amount(w, currency, new)
+        d.status = "approved"; d.admin_id = current_user.id; d.note = note or f"{asset['name']} deposit verified"; d.reviewed_at = db.func.now()
+        db.session.add(WalletTransaction(wallet_id=w.id, user_id=d.user_id, admin_id=current_user.id, amount=amount, currency=currency, transaction_type="credit", transfer_type="crypto", description=d.note, balance_after=new, external_reference=ref("DEP")))
         db.session.commit()
-        flash("Deposit approved and BTC credited to the user's wallet.", "success")
+        flash(f"Deposit approved and {asset['symbol']} credited to the user's wallet.", "success")
     elif action == "reject":
         d.status = "rejected"; d.admin_id = current_user.id; d.note = note or "Deposit rejected"; d.reviewed_at = db.func.now(); db.session.commit(); flash("Deposit rejected.", "success")
     else:
@@ -994,19 +1067,30 @@ def admin_wallet(user_id):
     if not u: abort(404)
     w = wallet_for(u)
     if request.method == "POST":
-        action = request.form.get("action"); desc = request.form.get("description", "").strip() or "Admin wallet adjustment"
-        try: amount = parse_btc(request.form.get("amount", ""))
+        action = request.form.get("action")
+        currency = (request.form.get("currency") or "BTC").strip().upper()
+        asset = CRYPTO_ASSETS.get(currency)
+        desc = request.form.get("description", "").strip() or "Admin wallet adjustment"
+        try:
+            amount = parse_crypto(request.form.get("amount", ""), currency)
         except ValueError as e:
-            flash(str(e), "error"); return render_template("admin_wallet.html", user=u, wallet=w)
-        old = Decimal(str(w.balance))
-        if action == "credit": new = old + amount; typ = "credit"
-        elif action == "debit" and amount <= old: new = old - amount; typ = "debit"
+            flash(str(e), "error")
+            return render_template("admin_wallet.html", user=u, wallet=w, crypto_assets=CRYPTO_ASSETS, wallet_balances=wallet_balances(w))
+        old = wallet_amount(w, currency)
+        if action == "credit":
+            new = old + amount; typ = "credit"
+        elif action == "debit" and amount <= old:
+            new = old - amount; typ = "debit"
         else:
-            flash("Invalid action or insufficient balance.", "error"); return render_template("admin_wallet.html", user=u, wallet=w)
-        w.balance = new
-        db.session.add(WalletTransaction(wallet_id=w.id, user_id=u.id, admin_id=current_user.id, amount=amount, transaction_type=typ, transfer_type="crypto", description=desc, balance_after=new, external_reference=ref("ADJ")))
-        db.session.commit(); flash(f"Wallet updated. New balance: {new:.8f} BTC", "success")
-    return render_template("admin_wallet.html", user=u, wallet=w)
+            flash("Invalid action or insufficient balance.", "error")
+            return render_template("admin_wallet.html", user=u, wallet=w, crypto_assets=CRYPTO_ASSETS, wallet_balances=wallet_balances(w))
+        set_wallet_amount(w, currency, new)
+        db.session.add(WalletTransaction(wallet_id=w.id, user_id=u.id, admin_id=current_user.id, amount=amount, currency=currency, transaction_type=typ, transfer_type="crypto", description=desc, balance_after=new, external_reference=ref("ADJ")))
+        db.session.commit()
+        flash(f"Wallet updated. New {asset['symbol']} balance: {new:.8f} {asset['symbol']}", "success")
+    return render_template("admin_wallet.html", user=u, wallet=w, crypto_assets=CRYPTO_ASSETS, wallet_balances=wallet_balances(w))
+
+
 
 
 if __name__ == "__main__":
