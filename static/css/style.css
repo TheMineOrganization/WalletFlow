@@ -32,3 +32,104 @@
 .chat-notification span { opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .balance-label{display:flex;justify-content:space-between;align-items:center;gap:12px}.balance-eye{border:0;background:#ffffff1a;color:#fff;width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:18px;display:grid;place-items:center}.balance-eye:hover{background:#ffffff2b}.balance-hidden #main-balance,.balance-hidden #usd-balance{filter:blur(8px);user-select:none}.balance-hidden #main-balance{color:transparent;text-shadow:0 0 12px #fff}.balance-hidden #usd-balance{color:transparent;text-shadow:0 0 8px #fff}.dash .conversion-card{background:linear-gradient(145deg,#f7fbff,#eef4ff);border-color:#dbe7fb}.dash .conversion-card>small{color:#3157d5}
+
+/* --- Crypto UI theme --- */
+:root{
+  --crypto-bg:#050914;
+  --crypto-panel:#0a1222;
+  --crypto-panel-2:#0d172b;
+  --crypto-line:#1b2a43;
+  --crypto-text:#eef6ff;
+  --crypto-muted:#8ea1bb;
+  --crypto-blue:#39a7ff;
+  --crypto-cyan:#42e8ff;
+  --crypto-violet:#7667ff;
+  --crypto-orange:#f6b84a;
+}
+body{
+  background:
+    radial-gradient(circle at 8% 8%,rgba(57,167,255,.13),transparent 25%),
+    radial-gradient(circle at 88% 12%,rgba(118,103,255,.12),transparent 24%),
+    radial-gradient(circle at 50% 90%,rgba(66,232,255,.07),transparent 28%),
+    var(--crypto-bg);
+  color:var(--crypto-text);
+}
+body:before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.32;
+  background-image:linear-gradient(rgba(66,232,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(66,232,255,.035) 1px,transparent 1px);
+  background-size:42px 42px;
+  mask-image:linear-gradient(to bottom,black,transparent 85%);
+}
+.navbar{
+  background:rgba(5,9,20,.82);border-bottom:1px solid rgba(66,232,255,.12);
+  backdrop-filter:blur(18px);box-shadow:0 10px 35px rgba(0,0,0,.2)
+}
+.brand img{filter:drop-shadow(0 0 10px rgba(57,167,255,.28))}
+nav a{color:#a9b9cf}nav a:hover{color:#fff}nav .admin{color:#8d9cff}
+.navbtn,.primary{background:linear-gradient(135deg,#168cff,#675bff)!important;color:#fff!important;border-color:transparent!important;box-shadow:0 8px 25px rgba(57,167,255,.22)}
+.menu-toggle{color:#eef6ff}
+.page{position:relative}
+.hero small,.heading small,.card>small{color:var(--crypto-cyan)}
+.hero h1 span{color:var(--crypto-cyan);text-shadow:0 0 25px rgba(66,232,255,.25)}
+.hero p,.features p,.card p,.heading p{color:var(--crypto-muted)}
+.btn{background:#0c1628;color:#eaf3ff;border-color:#20334f;box-shadow:0 5px 18px rgba(0,0,0,.12)}
+.btn:hover{border-color:#3b7db0;transform:translateY(-1px)}
+.hero-card,.balance-card{
+  background:
+    radial-gradient(circle at 84% 12%,rgba(66,232,255,.17),transparent 25%),
+    radial-gradient(circle at 18% 85%,rgba(118,103,255,.18),transparent 30%),
+    linear-gradient(145deg,#07101f,#0b1d36 52%,#10183a);
+  border:1px solid rgba(66,232,255,.18);
+  box-shadow:0 28px 70px rgba(0,0,0,.4),0 0 45px rgba(57,167,255,.08);
+}
+.balance-card:before{opacity:.8}
+.features>div,.card,.stats>div,.table,.auth .card,.success-details{
+  background:linear-gradient(145deg,rgba(10,18,34,.96),rgba(8,15,29,.96));
+  border-color:var(--crypto-line);box-shadow:0 18px 50px rgba(0,0,0,.22)
+}
+.features>div:hover,.card:hover,.stats>div:hover{border-color:rgba(66,232,255,.28)}
+.features b{color:var(--crypto-cyan)}
+.table{overflow:hidden}
+.row,.userrow{border-color:var(--crypto-line)}
+.row:hover,.statement-row:hover{background:#0d192d}
+.row small,.userrow small,.muted,.auth-note{color:var(--crypto-muted)!important}
+.row i.credit,.row i.adjustment{background:rgba(20,205,147,.12);color:#4be7b1}
+.row i.debit{background:rgba(255,91,91,.11);color:#ff7676}
+input,select{background:#07101e;color:#eef6ff;border-color:#20334d}
+input::placeholder{color:#647891}
+input:focus,select:focus{outline:none;border-color:#36b5ff;box-shadow:0 0 0 3px rgba(54,181,255,.1)}
+label{color:#cbd8e8}
+.flash{background:#0b1628;color:#eef6ff;border-color:#338dca;box-shadow:0 18px 45px rgba(0,0,0,.4)}
+.empty{color:var(--crypto-muted)}
+footer{color:#657b96;border-color:var(--crypto-line)}
+.address-box{background:#07101e;border-color:#29415f}
+.small{background:rgba(118,103,255,.12);color:#a9a2ff}
+.dash .conversion-card{background:linear-gradient(145deg,#091426,#0d1b31 55%,#111735);border-color:#203654}
+.dash .conversion-card>small{color:var(--crypto-cyan)}
+.conversion-list{border-color:var(--crypto-line)}
+.conversion-list div{border-color:var(--crypto-line)}
+.conversion-list span{color:var(--crypto-muted)}
+.conversion-list strong{color:#f1f7ff}
+.approved-banner{background:rgba(15,159,110,.09);border-color:rgba(66,232,178,.25);color:#eef6ff}
+.approved-banner small{color:var(--crypto-muted)}
+.chat-users,.chat-box{background:linear-gradient(145deg,#091323,#0a1425);border-color:var(--crypto-line)}
+.chat-head{background:#0a1425;border-color:var(--crypto-line)}
+.chat-messages{background:#060d19}
+.chat-user{color:#eaf3ff}.chat-user:hover,.chat-user.selected{background:rgba(57,167,255,.1)}
+.chat-user small,.online-admin,.chat-head small{color:var(--crypto-muted)}
+.bubble{background:#0c1728;border-color:#1d304a;color:#eaf3ff;box-shadow:0 5px 20px rgba(0,0,0,.2)}
+.mine .bubble{background:linear-gradient(135deg,#176fc1,#5b4fe0);border-color:transparent}
+.chat-form{border-color:var(--crypto-line);background:#091323}
+.chat-notification{background:rgba(57,167,255,.09);border-color:rgba(57,167,255,.22)}
+.success-page>p{color:var(--crypto-muted)}
+.success-details div{border-color:var(--crypto-line)}
+.success-details span{color:var(--crypto-muted)}
+.withdraw-methods .method-option{background:#091426;border-color:#20334d;color:#eef6ff}
+.method-option small{color:var(--crypto-muted)}
+.method-option:has(input:checked){border-color:#3c9fe0;background:rgba(57,167,255,.09);box-shadow:0 0 0 2px rgba(57,167,255,.1)}
+.search input{background:#07101e}
+.warning{color:#ff8b8b!important}
+.danger{background:rgba(255,82,82,.08)!important;color:#ff8989!important;border-color:rgba(255,82,82,.25)!important}
+.balance-eye{background:rgba(255,255,255,.08)}
+.balance-eye:hover{background:rgba(66,232,255,.15)}
+@media(max-width:850px){nav{background:#07101e;border-bottom:1px solid var(--crypto-line);box-shadow:0 20px 35px rgba(0,0,0,.3)}}
