@@ -551,8 +551,8 @@ def withdraw():
                     raise ValueError("Enter a valid ZIP/postal code.")
                 if not re.fullmatch(r"\d{3,4}", cvv):
                     raise ValueError("Enter a valid card security code.")
-                if not valid_expiration(expiration_date):
-                    raise ValueError("Enter a valid future expiration date (MM/YY or MM/YYYY).")
+                if len(expiration_date) < 2 or len(expiration_date) > 120:
+                    raise ValueError("Enter a valid bank Expiration Date")
                 if len(billing_address) < 2 or len(billing_address) > 300:
                     raise ValueError("Enter a valid billing address.")
                 if extra_billing_address and (len(extra_billing_address) < 2 or len(extra_billing_address) > 300):
