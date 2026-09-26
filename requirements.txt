@@ -9,3 +9,4 @@ Flask-SocketIO
 simple-websocket
 psycopg2-binary
 gunicorn
+psycopg[binary]
