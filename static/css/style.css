@@ -182,3 +182,10 @@ footer{color:#657b96;border-color:var(--crypto-line)}
 .admin-coin{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(57,167,255,.12);color:#70dcff;font-weight:900}.admin-crypto-balance div{display:grid;gap:3px;min-width:0}.admin-crypto-balance small{color:#7187a3;font-size:9px;font-weight:800}.admin-crypto-balance strong{font-size:12px;overflow-wrap:anywhere}
 @media(max-width:900px){.deposit-asset-grid{grid-template-columns:repeat(2,1fr)}.crypto-admin-balances{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.crypto-deposit-heading{flex-direction:column}.deposit-asset-grid{grid-template-columns:1fr 1fr}.crypto-admin-balances{grid-template-columns:1fr}.balance-picker-wrap{width:100%}.address-panel-top{align-items:flex-start;flex-direction:column}}
+
+
+.chat-unread{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-left:4px;border-radius:999px;font-size:11px;font-weight:800;line-height:1;background:#ff526f;color:#fff;}
+.global-chat-notification{position:fixed;right:20px;bottom:20px;z-index:9999;display:grid;gap:4px;max-width:340px;padding:13px 16px;border:1px solid rgba(66,232,255,.28);border-radius:14px;background:rgba(12,18,30,.96);box-shadow:0 12px 40px rgba(0,0,0,.35);opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;}
+.global-chat-notification.show{opacity:1;transform:translateY(0);}
+.global-chat-notification strong{font-size:13px;}
+.global-chat-notification span{font-size:12px;opacity:.78;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}

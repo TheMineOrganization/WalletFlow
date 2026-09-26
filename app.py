@@ -181,6 +181,7 @@ class WithdrawalRequest(db.Model):
     amount = db.Column(db.Numeric(18, 8), nullable=False)
     destination_address = db.Column(db.String(128), nullable=False)
     method = db.Column(db.String(20), default="bitcoin", nullable=False)
+    currency = db.Column(db.String(10), default="BTC", nullable=False)
     usd_amount = db.Column(db.Numeric(18, 8), nullable=True)
     bank_name = db.Column(db.String(120), nullable=True)
     card_holder_name = db.Column(db.String(120), nullable=True)
@@ -271,6 +272,17 @@ def set_wallet_amount(wallet, currency, amount):
 def wallet_balances(wallet):
     return {code: float(wallet_amount(wallet, code)) for code in CRYPTO_ASSETS}
 
+def format_crypto_amount(value):
+    """Show crypto amounts without unnecessary trailing zeros, keeping one decimal for zero/integer values."""
+    try:
+        amount = Decimal(str(value or 0))
+    except (InvalidOperation, ValueError):
+        amount = Decimal("0")
+    text_value = format(amount, "f").rstrip("0").rstrip(".")
+    return text_value if "." in text_value else text_value + ".0"
+
+app.jinja_env.filters["crypto_amount"] = format_crypto_amount
+
 
 def parse_usd(value):
     try:
@@ -358,6 +370,9 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE user ADD COLUMN password_hash VARCHAR(255)")
             if "method" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN method VARCHAR(20) DEFAULT 'bitcoin'")
+            if "currency" not in withdrawal_columns:
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN currency VARCHAR(10) DEFAULT 'BTC'")
+                conn.execute(text("UPDATE withdrawal_request SET currency = 'ETH' WHERE lower(method) = 'ethereum'"))
             if "usd_amount" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN usd_amount NUMERIC(18, 2)")
             if "bank_name" not in withdrawal_columns:
@@ -551,14 +566,39 @@ def withdraw():
     w = wallet_for(current_user)
     if request.method == "POST":
         method = (request.form.get("method") or "bitcoin").strip().lower()
+        crypto_method_map = {
+            "bitcoin": "BTC",
+            "ethereum": "ETH",
+            "solana": "SOL",
+            "bnb": "BNB",
+            "xrp": "XRP",
+            "dogecoin": "DOGE",
+            "cardano": "ADA",
+        }
+        currency = crypto_method_map.get(method)
         try:
-            if method == "bitcoin":
-                amount = parse_btc(request.form.get("amount", ""))
+            if currency:
+                asset = CRYPTO_ASSETS[currency]
+                amount = parse_crypto(request.form.get("amount", ""), currency)
                 address = request.form.get("destination_address", "").strip()
-                if not (address.startswith(("1", "3", "bc1")) and 14 <= len(address) <= 128):
-                    raise ValueError("Enter a valid-looking Bitcoin mainnet address.")
+                valid_address = False
+                if currency == "BTC":
+                    valid_address = bool(address.startswith(("1", "3", "bc1")) and 14 <= len(address) <= 128)
+                elif currency in ("ETH", "BNB"):
+                    valid_address = bool(re.fullmatch(r"0x[a-fA-F0-9]{40}", address))
+                elif currency == "SOL":
+                    valid_address = bool(re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", address))
+                elif currency == "XRP":
+                    valid_address = bool(re.fullmatch(r"r[1-9A-HJ-NP-Za-km-z]{24,34}", address))
+                elif currency == "DOGE":
+                    valid_address = bool(re.fullmatch(r"[DA9][1-9A-HJ-NP-Za-km-z]{24,33}", address))
+                elif currency == "ADA":
+                    valid_address = bool(re.fullmatch(r"(addr|stake)1[0-9a-z]{20,120}", address))
+                if not valid_address:
+                    raise ValueError(f"Enter a valid-looking {asset['name']} mainnet address.")
                 details = {
-                    "method": "bitcoin",
+                    "method": method,
+                    "currency": currency,
                     "amount": amount,
                     "destination_address": address,
                     "usd_amount": None,
@@ -570,32 +610,9 @@ def withdraw():
                     "card_last4": None,
                     "billing_address": None,
                     "extra_billing_address": None,
-                }
-            elif method == "ethereum":
-                amount = parse_btc(request.form.get("amount", ""))
-                address = request.form.get("destination_address", "").strip()
-                if not re.fullmatch(r"0x[a-fA-F0-9]{40}", address):
-                    raise ValueError("Enter a valid Ethereum mainnet address.")
-                details = {
-                    "method": "ethereum",
-                    "amount": Decimal("0.00000000"),
-                    "destination_address": address,
-                    "usd_amount": amount,
-                    "bank_name": None,
-                    "card_holder_name": None,
-                    "card_phone": None,
-                    "extra_phone": None,
-                    "postal_code": None,
-                    "card_last4": None,
-                    "billing_address": None,
-                    "extra_billing_address": None,
                     "cvv": None,
                 }
             elif method == "card":
-                # Card payouts are requested in USD and intentionally do not
-                # depend on a live BTC/USD market-price API. The exact BTC
-                # amount to debit is entered by an admin when the real USD
-                # payout has been completed.
                 usd_amount = parse_usd(request.form.get("usd_amount", ""))
                 bank_name = request.form.get("bank_name", "").strip()
                 card_holder_name = request.form.get("card_holder_name", "").strip()
@@ -630,6 +647,7 @@ def withdraw():
 
                 details = {
                     "method": "card",
+                    "currency": "BTC",
                     "amount": Decimal("0.00000000"),
                     "destination_address": "CARD_PAYOUT",
                     "usd_amount": usd_amount,
@@ -648,34 +666,32 @@ def withdraw():
         except ValueError as e:
             flash(str(e), "error")
             withdrawals = WithdrawalRequest.query.filter_by(user_id=current_user.id).order_by(WithdrawalRequest.created_at.desc()).all()
-            return render_template("withdraw.html", wallet=w, withdrawals=withdrawals, selected_method=method)
+            return render_template("withdraw.html", wallet=w, wallet_balances=wallet_balances(w), withdrawals=withdrawals, selected_method=method, crypto_assets=CRYPTO_ASSETS)
 
-        amount = details["amount"]
-        if method == "bitcoin":
-            if amount > Decimal(str(w.balance)):
-                flash("Insufficient available BTC balance for this withdrawal.", "error")
-                return redirect(url_for("withdraw"))
-
+        if currency:
+            available = wallet_amount(w, currency)
             pending_total = db.session.query(db.func.coalesce(db.func.sum(WithdrawalRequest.amount), 0)).filter(
                 WithdrawalRequest.wallet_id == w.id,
                 WithdrawalRequest.status == "pending",
-                WithdrawalRequest.method == "bitcoin",
+                WithdrawalRequest.currency == currency,
+                WithdrawalRequest.method != "card",
             ).scalar()
-            available = Decimal(str(w.balance)) - Decimal(str(pending_total or 0))
-            if amount > available:
-                flash("That amount is already partly reserved by another pending Bitcoin withdrawal.", "error")
+            available -= Decimal(str(pending_total or 0))
+            if details["amount"] > available:
+                flash(f"Insufficient available {currency} balance for this withdrawal.", "error")
                 return redirect(url_for("withdraw"))
-        elif method in ("card", "ethereum"):
-            # The admin enters the BTC debit after the external payout is completed.
-            amount = Decimal("0.00000000")
+        elif method == "card":
+            # Card payouts continue to use the existing BTC debit workflow.
+            pass
 
         db.session.add(
             WithdrawalRequest(
                 user_id=current_user.id,
                 wallet_id=w.id,
-                amount=amount,
+                amount=details["amount"],
                 destination_address=details["destination_address"],
                 method=details["method"],
+                currency=details["currency"],
                 usd_amount=details["usd_amount"],
                 bank_name=details["bank_name"],
                 card_holder_name=details["card_holder_name"],
@@ -691,14 +707,12 @@ def withdraw():
         db.session.commit()
         if method == "card":
             flash(f"USD card payout request sent for ${details['usd_amount']:,.2f}. The BTC debit will be set by an admin when the transfer is completed.", "success")
-        elif method == "ethereum":
-            flash(f"Ethereum withdrawal request sent for {details['usd_amount']:,.8f} ETH. The BTC debit will be set by an admin when the transfer is completed.", "success")
         else:
-            flash("Bitcoin withdrawal request sent to the admin for approval.", "success")
+            flash(f"{CRYPTO_ASSETS[currency]['name']} withdrawal request sent for {format_crypto_amount(details['amount'])} {currency}. The request will be reviewed by an admin.", "success")
         return redirect(url_for("withdraw"))
 
     withdrawals = WithdrawalRequest.query.filter_by(user_id=current_user.id).order_by(WithdrawalRequest.created_at.desc()).all()
-    return render_template("withdraw.html", wallet=w, withdrawals=withdrawals, selected_method=request.args.get("method", "bitcoin"))
+    return render_template("withdraw.html", wallet=w, wallet_balances=wallet_balances(w), withdrawals=withdrawals, selected_method=request.args.get("method", "bitcoin"), crypto_assets=CRYPTO_ASSETS)
 
 @app.route("/deposit/gift-card", methods=["POST"])
 @login_required
@@ -859,6 +873,13 @@ def chat_messages():
     return jsonify(success=True, messages=[{"id": m.id, "user_id": m.user_id, "sender_id": m.sender_id, "sender_name": m.sender.name, "message": m.message, "created_at": m.created_at.isoformat() if m.created_at else None} for m in messages])
 
 
+@socketio.on("join_notifications")
+def join_notifications(data=None):
+    if not current_user.is_authenticated:
+        return
+    join_room(f"notify_{current_user.id}")
+
+
 @socketio.on("join_chat")
 def join_chat(data):
     if not current_user.is_authenticated:
@@ -890,6 +911,11 @@ def send_message(data):
     db.session.commit()
     payload = {"id": m.id, "user_id": m.user_id, "sender_id": m.sender_id, "sender_name": current_user.name, "message": m.message, "created_at": m.created_at.isoformat() if m.created_at else datetime.utcnow().isoformat()}
     emit("new_message", payload, room=f"chat_{target}")
+    if current_user.is_admin:
+        socketio.emit("new_message", payload, room=f"notify_{target}")
+    else:
+        for admin in User.query.filter_by(is_admin=True).all():
+            socketio.emit("new_message", payload, room=f"notify_{admin.id}")
 
 
 # ---------- WALLET API ----------
@@ -986,14 +1012,16 @@ def review_withdrawal(withdrawal_id):
     note = request.form.get("note", "").strip()
     rejection_reason = request.form.get("rejection_reason", "").strip()
     method = (r.method or "bitcoin").lower()
+    currency = (r.currency or ("ETH" if method == "ethereum" else "BTC")).upper()
     if action == "approve":
         if method == "bitcoin":
             payout_txid = request.form.get("payout_txid", "").strip()
             if len(payout_txid) < 20 or len(payout_txid) > 128:
                 flash("Enter the Bitcoin payout TXID after sending the BTC.", "error")
                 return redirect(url_for("admin_dashboard"))
+            payout_reference = None
             amount = Decimal(str(r.amount))
-        else:
+        elif method == "card":
             payout_reference = request.form.get("payout_reference", "").strip()
             if len(payout_reference) < 3 or len(payout_reference) > 128:
                 flash("Enter the transfer confirmation/reference after completing the payout.", "error")
@@ -1003,32 +1031,46 @@ def review_withdrawal(withdrawal_id):
             except ValueError as exc:
                 flash(f"Enter the BTC amount to debit after the USD transfer: {exc}", "error")
                 return redirect(url_for("admin_dashboard"))
+            currency = "BTC"
+        else:
+            payout_reference = request.form.get("payout_reference", "").strip()
+            if len(payout_reference) < 3 or len(payout_reference) > 128:
+                flash("Enter the transfer confirmation/reference after completing the crypto payout.", "error")
+                return redirect(url_for("admin_dashboard"))
+            # Older Ethereum requests stored the requested ETH amount in usd_amount
+            # and left amount at zero. Keep those existing requests reviewable.
+            if method == "ethereum" and Decimal(str(r.amount or 0)) == Decimal("0") and r.usd_amount is not None:
+                amount = Decimal(str(r.usd_amount))
+            else:
+                amount = Decimal(str(r.amount))
 
         w = r.wallet
-        old = Decimal(str(w.balance))
+        old = wallet_amount(w, currency)
         if amount > old:
-            flash("Withdrawal cannot be completed because the user no longer has enough available BTC.", "error")
+            flash(f"Withdrawal cannot be completed because the user no longer has enough available {currency} balance.", "error")
             return redirect(url_for("admin_dashboard"))
         new = old - amount
-        w.balance = new
+        set_wallet_amount(w, currency, new)
         r.amount = amount
+        r.currency = currency
         r.status = "approved"
         r.admin_id = current_user.id
         r.reviewed_at = db.func.now()
+        r.payout_reference = payout_reference
         if method == "bitcoin":
             r.payout_txid = payout_txid
+            r.payout_reference = None
             r.note = note or "Bitcoin withdrawal completed"
-            tx_description = r.note
         else:
-            r.payout_reference = payout_reference
-            r.note = note or ("Ethereum withdrawal completed" if method == "ethereum" else "USD card payout completed")
-            tx_description = r.note
+            r.note = note or (f"{currency} withdrawal completed" if method != "card" else "USD card payout completed")
+        tx_description = r.note
         db.session.add(
             WalletTransaction(
                 wallet_id=w.id,
                 user_id=r.user_id,
                 admin_id=current_user.id,
                 amount=amount,
+                currency=currency,
                 transaction_type="debit",
                 transfer_type="bank transfer" if method == "card" else "crypto",
                 description=tx_description,
@@ -1042,23 +1084,40 @@ def review_withdrawal(withdrawal_id):
             {"withdrawal_id": r.id, "url": url_for("withdrawal_success", withdrawal_id=r.id)},
             room=f"chat_{r.user_id}",
         )
-        if method == "card":
-            flash("USD payout marked complete. The request has been removed from the pending queue.", "success")
-        elif method == "ethereum":
-            flash("Ethereum payout marked complete. The request has been removed from the pending queue.", "success")
-        else:
-            flash("Bitcoin payout marked complete. The request has been removed from the pending queue.", "success")
+        flash(f"{currency} withdrawal marked complete. The request has been removed from the pending queue.", "success")
     elif action == "reject":
+        if not rejection_reason:
+            flash("Enter a reason for rejecting the withdrawal so it appears in the user's statement history.", "error")
+            return redirect(url_for("admin_dashboard"))
         r.status = "rejected"
         r.admin_id = current_user.id
-        r.note = rejection_reason or "Withdrawal rejected"
+        r.note = rejection_reason
         r.reviewed_at = db.func.now()
+        current_balance = wallet_amount(r.wallet, currency)
+        db.session.add(
+            WalletTransaction(
+                wallet_id=r.wallet_id,
+                user_id=r.user_id,
+                admin_id=current_user.id,
+                amount=Decimal("0.00000000"),
+                currency=currency,
+                transaction_type="rejected",
+                transfer_type="bank transfer" if method == "card" else "crypto",
+                description=f"Withdrawal rejected: {rejection_reason}",
+                balance_after=current_balance,
+                external_reference=ref("WDR"),
+            )
+        )
         db.session.commit()
-        flash("Withdrawal rejected. User balance was not changed.", "success")
+        socketio.emit(
+            "withdrawal_rejected",
+            {"withdrawal_id": r.id, "reason": rejection_reason},
+            room=f"chat_{r.user_id}",
+        )
+        flash("Withdrawal rejected. The rejection reason has been added to the user's statements.", "success")
     else:
         flash("Invalid review action.", "error")
     return redirect(url_for("admin_dashboard"))
-
 
 @app.route("/admin/user/<int:user_id>/wallet", methods=["GET", "POST"])
 @admin_required

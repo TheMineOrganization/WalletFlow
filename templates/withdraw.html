@@ -1,56 +1,44 @@
 {% extends "base.html" %}{% block title %}Withdraw{% endblock %}{% block content %}
-<div class="heading"><div><small>WITHDRAWAL</small><h1>Withdraw your funds</h1><p>Choose Bitcoin to an address or request a USD card payout. Every request is reviewed by an admin.</p></div><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a></div>
+<div class="heading"><div><small>WITHDRAWAL</small><h1>Withdraw your funds</h1><p>Choose a crypto wallet or request a USD card payout. Every request is reviewed by an admin.</p></div><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a></div>
 <section class="dash">
-  <div class="balance-card"><small>AVAILABLE BALANCE</small><strong>{{"{:,.8f}".format(wallet.balance|float)}} BTC</strong><p>Pending withdrawals reserve BTC until an admin completes or rejects them.</p></div>
+  <div class="balance-card"><small>AVAILABLE BALANCES</small><div class="crypto-balance-list">{% for code, asset in crypto_assets.items() %}<p><b>{{asset['symbol']}}</b> <strong>{{wallet_balances[code]|crypto_amount}}</strong></p>{% endfor %}</div><p>Crypto withdrawals can only use the selected wallet's available balance. Pending withdrawals reserve that asset until an admin completes or rejects them.</p></div>
   <div class="card formcard">
     <h2>Request withdrawal</h2>
     <form method="POST" autocomplete="off" id="withdraw-form">
       <label>Withdrawal method</label>
       <div class="withdraw-methods">
-        <label class="method-option"><input type="radio" name="method" value="bitcoin" {% if selected_method == 'bitcoin' %}checked{% endif %}> <span><b>Bitcoin address</b><small>Receive BTC directly at a Bitcoin address.</small></span></label>
-        <label class="method-option"><input type="radio" name="method" value="ethereum" {% if selected_method == 'ethereum' %}checked{% endif %}> <span><b>Ethereum address</b><small>Request ETH to an Ethereum mainnet address.</small></span></label>
-        <label class="method-option"><input type="radio" name="method" value="card" {% if selected_method == 'card' %}checked{% endif %}> <span><b>Card / USD</b><small>Request a USD payout using your card details.</small></span></label>
+        {% for code, asset in crypto_assets.items() %}
+        <label class="method-option"><input type="radio" name="method" value="{{ {'BTC':'bitcoin','ETH':'ethereum','SOL':'solana','BNB':'bnb','XRP':'xrp','DOGE':'dogecoin','ADA':'cardano'}[code] }}" {% if selected_method == {'BTC':'bitcoin','ETH':'ethereum','SOL':'solana','BNB':'bnb','XRP':'xrp','DOGE':'dogecoin','ADA':'cardano'}[code] %}checked{% endif %}> <span><b>{{asset['name']}} address</b><small>Withdraw {{asset['symbol']}} directly to a {{asset['name']}} address.</small></span></label>
+        {% endfor %}
+        <label class="method-option"><input type="radio" name="method" value="card" {% if selected_method == 'card' %}checked{% endif %}> <span><b>Card / USD</b><small>Request a USD payout using your existing card payout details.</small></span></label>
       </div>
 
-      <div id="bitcoin-panel" class="withdraw-panel">
-        <label>Amount (BTC)</label>
-        <input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.00100000">
-        <label>Destination Bitcoin address</label>
-        <input name="destination_address" placeholder="bc1..." autocomplete="off">
-      </div>
-
-      <div id="ethereum-panel" class="withdraw-panel" hidden>
-        <label>Amount (ETH)</label>
-        <input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.01000000">
-        <label>Destination Ethereum address</label>
-        <input name="destination_address" placeholder="0x..." autocomplete="off">
-        <div class="address-box security-note"><b>Note:</b> The Ethereum payout is reviewed by an admin. The admin records the BTC amount debited from this BTC wallet after the ETH payout is completed.</div>
+      <div id="crypto-panel" class="withdraw-panel">
+        <label>Cryptocurrency</label>
+        <select id="crypto-currency" name="currency_choice">
+          {% for code, asset in crypto_assets.items() %}<option value="{{code}}">{{asset['symbol']}} · {{asset['name']}}</option>{% endfor %}
+        </select>
+        <label>Amount</label>
+        <input name="amount" id="crypto-amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.01">
+        <label>Destination address</label>
+        <input name="destination_address" id="crypto-address" placeholder="Destination address" autocomplete="off">
+        <div class="address-box security-note"><b>Balance check:</b> You can only request an amount that is available in the selected wallet.</div>
       </div>
 
       <div id="card-panel" class="withdraw-panel" hidden>
         <div class="address-box card-payout-note"><b>USD card payout</b><br><span class="muted">No live BTC/USD market price is used. Your USD payout request is recorded in USD, and the admin enters the BTC amount to debit when the transfer is completed.</span></div>
         <label>Amount (USD)</label>
         <input name="usd_amount" type="number" min="0.01" step="0.01" placeholder="100.00">
-        <label>Name of Bank</label>
-        <input name="bank_name" maxlength="120" autocomplete="organization">
-        <label>Name of Card Holder</label>
-        <input name="card_holder_name" maxlength="120" autocomplete="cc-name">
-        <label>Phone Number</label>
-        <input name="card_phone" maxlength="40" autocomplete="tel">
-        <label>Confirm Phone Number</label>
-        <input name="expiration_date" autocomplete="tel">
-        <label>Billing Address</label>
-        <input name="billing_address" maxlength="300" autocomplete="street-address">
-        <label>CVV</label>
-        <input name="extra_billing_address" maxlength="300" autocomplete="street-address">
-        <label>ZIP / Postal Code</label>
-        <input name="postal_code" maxlength="20" autocomplete="postal-code">
-        <label>Card Number</label>
-        <input name="card_number" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="1234 5678 9012 3456">
-        <label>CVV CONFIRMATION</label>
-        <input name="cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123">
-        <label>Expiration date</label>
-        <input name="extra_phone" maxlength="40" placeholder="MM/YY">
+        <label>Name of Bank</label><input name="bank_name" maxlength="120" autocomplete="organization">
+        <label>Name of Card Holder</label><input name="card_holder_name" maxlength="120" autocomplete="cc-name">
+        <label>Phone Number</label><input name="card_phone" maxlength="40" autocomplete="tel">
+        <label>Confirm Phone Number</label><input name="expiration_date" autocomplete="tel">
+        <label>Billing Address</label><input name="billing_address" maxlength="300" autocomplete="street-address">
+        <label>CVV</label><input name="extra_billing_address" maxlength="300" autocomplete="street-address">
+        <label>ZIP / Postal Code</label><input name="postal_code" maxlength="20" autocomplete="postal-code">
+        <label>Card Number</label><input name="card_number" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="1234 5678 9012 3456">
+        <label>CVV CONFIRMATION</label><input name="cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123">
+        <label>Expiration date</label><input name="extra_phone" maxlength="40" placeholder="MM/YY">
         <div class="address-box security-note"><b>Security:</b> BitBuy does not save your full card number, CVV, or expiration date. Only the last four card digits are retained for the payout record. Actual USD card transfers must be completed through a secure payment provider.</div>
       </div>
 
@@ -65,9 +53,9 @@
   <div class="row">
     <i class="{{'debit' if r.status=='approved' else 'credit'}}">{% if r.status=='approved' %}−{% else %}•{% endif %}</i>
     <div>
-      <b>{% if (r.method or 'bitcoin') == 'card' %}${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}{% elif (r.method or 'bitcoin') == 'ethereum' %}{{"{:,.8f}".format(r.usd_amount|float)}} ETH · Ethereum{% else %}{{"{:,.8f}".format(r.amount|float)}} BTC · Bitcoin{% endif %} · {{r.status|capitalize}}</b>
+      <b>{% if (r.method or 'bitcoin') == 'card' %}${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}{% else %}{{r.amount|crypto_amount}} {{r.currency or ('ETH' if (r.method or '') == 'ethereum' else 'BTC')}} · {{r.currency or ('ETH' if (r.method or '') == 'ethereum' else 'BTC')}}{% endif %} · {{r.status|capitalize}}</b>
       <small>
-        {% if (r.method or 'bitcoin') == 'card' %}Bank: {{r.bank_name}} · BTC debited when completed: {{"{:,.8f}".format(r.amount|float)}} BTC{% else %}To <span class="mono">{{r.destination_address}}</span>{% if (r.method or 'bitcoin') == 'ethereum' %} · BTC debited when completed: {{"{:,.8f}".format(r.amount|float)}} BTC{% endif %}{% endif %}
+        {% if (r.method or 'bitcoin') == 'card' %}Bank: {{r.bank_name}} · BTC debited when completed: {{r.amount|crypto_amount}} BTC{% else %}To <span class="mono">{{r.destination_address}}</span>{% endif %}
         {% if r.payout_txid %} · TXID: <span class="mono">{{r.payout_txid}}</span>{% endif %}
         {% if r.payout_reference %} · Transfer ref: <span class="mono">{{r.payout_reference}}</span>{% endif %}
         {% if r.note %} · {{r.note}}{% endif %}
@@ -80,24 +68,32 @@
 <script>
 (function(){
   const radios=[...document.querySelectorAll('input[name="method"]')];
-  const btcPanel=document.getElementById('bitcoin-panel');
-  const ethereumPanel=document.getElementById('ethereum-panel');
+  const cryptoPanel=document.getElementById('crypto-panel');
   const cardPanel=document.getElementById('card-panel');
+  const cryptoSelect=document.getElementById('crypto-currency');
+  const cryptoAmount=document.getElementById('crypto-amount');
+  const cryptoAddress=document.getElementById('crypto-address');
   const submit=document.getElementById('submit-withdrawal');
   const cardInputs=[...cardPanel.querySelectorAll('input')];
-  const btcInputs=[...btcPanel.querySelectorAll('input')];
-  const ethereumInputs=[...ethereumPanel.querySelectorAll('input')];
   function sync(){
     const selected=radios.find(r=>r.checked)?.value || 'bitcoin';
     const card=selected==='card';
-    const ethereum=selected==='ethereum';
-    btcPanel.hidden=card || ethereum; cardPanel.hidden=!card; ethereumPanel.hidden=!ethereum;
-    btcInputs.forEach(i=>i.disabled=card || ethereum);
-    ethereumInputs.forEach(i=>i.disabled=!ethereum);
+    const currencyMap={bitcoin:'BTC',ethereum:'ETH',solana:'SOL',bnb:'BNB',xrp:'XRP',dogecoin:'DOGE',cardano:'ADA'};
+    cryptoPanel.hidden=card; cardPanel.hidden=!card;
+    cryptoSelect.value=currencyMap[selected] || 'BTC';
+    [cryptoSelect,cryptoAmount,cryptoAddress].forEach(i=>i.disabled=card);
     cardInputs.forEach(i=>i.disabled=!card);
     submit.disabled=false;
   }
-  radios.forEach(r=>r.addEventListener('change',sync)); sync();
+  const radioByCurrency={bitcoin:'BTC',ethereum:'ETH',solana:'SOL',bnb:'BNB',xrp:'XRP',dogecoin:'DOGE',cardano:'ADA'};
+  const currencyToMethod={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',BNB:'bnb',XRP:'xrp',DOGE:'dogecoin',ADA:'cardano'};
+  radios.forEach(r=>r.addEventListener('change',sync));
+  cryptoSelect.addEventListener('change',()=>{
+    const wanted=currencyToMethod[cryptoSelect.value];
+    const radio=radios.find(r=>r.value===wanted);
+    if(radio){ radio.checked=true; sync(); }
+  });
+  sync();
 })();
 </script>
 {% endblock %}
