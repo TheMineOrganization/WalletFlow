@@ -100,6 +100,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=True)
     google_sub = db.Column(db.String(255), unique=True, nullable=True)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    is_frozen = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     wallet = db.relationship("Wallet", backref="user", uselist=False, cascade="all, delete-orphan")
 
@@ -368,6 +369,8 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE deposit_request ADD COLUMN currency VARCHAR(10) DEFAULT 'BTC'")
             if "currency" not in transaction_columns:
                 conn.exec_driver_sql("ALTER TABLE wallet_transaction ADD COLUMN currency VARCHAR(10) DEFAULT 'BTC'")
+            if "is_frozen" not in user_columns:
+                conn.exec_driver_sql("ALTER TABLE user ADD COLUMN is_frozen BOOLEAN DEFAULT FALSE")
             if "google_sub" not in user_columns:
                 conn.exec_driver_sql("ALTER TABLE user ADD COLUMN google_sub VARCHAR(255)")
             if "password_hash" not in user_columns:
@@ -427,6 +430,18 @@ def ensure_schema():
 # Initialize the SQLAlchemy schema during app startup so a fresh Render database
 # gets its tables before the first request.
 ensure_schema()
+
+
+@app.before_request
+def block_frozen_accounts():
+    """Frozen customers can only access support chat and logout until unfrozen."""
+    if not current_user.is_authenticated or current_user.is_admin or not getattr(current_user, "is_frozen", False):
+        return None
+    allowed = {"account_frozen", "chat", "chat_messages", "chat_unread", "chat_mark_read", "logout"}
+    endpoint = request.endpoint or ""
+    if endpoint in allowed or request.path.startswith("/socket.io") or request.path.startswith("/static/"):
+        return None
+    return redirect(url_for("account_frozen"))
 
 
 @app.route("/")
@@ -530,7 +545,7 @@ def logout():
 def dashboard():
     w = wallet_for(current_user)
     tx = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(WalletTransaction.created_at.desc()).limit(8).all()
-    pending_withdrawals = WithdrawalRequest.query.filter_by(user_id=current_user.id, status="pending").count()
+    pending_withdrawals = WithdrawalRequest.query.filter(WithdrawalRequest.user_id == current_user.id, WithdrawalRequest.status.in_(("pending", "background_check"))).count()
     latest_approved = WithdrawalRequest.query.filter_by(user_id=current_user.id, status="approved").order_by(WithdrawalRequest.reviewed_at.desc()).first()
     return render_template("dashboard.html", wallet=w, wallet_balances=wallet_balances(w), crypto_assets=CRYPTO_ASSETS, recent_transactions=tx, pending_withdrawals=pending_withdrawals, latest_approved=latest_approved)
 
@@ -678,7 +693,7 @@ def withdraw():
             available = wallet_amount(w, currency)
             pending_total = db.session.query(db.func.coalesce(db.func.sum(WithdrawalRequest.amount), 0)).filter(
                 WithdrawalRequest.wallet_id == w.id,
-                WithdrawalRequest.status == "pending",
+                WithdrawalRequest.status.in_(("pending", "background_check")),
                 WithdrawalRequest.currency == currency,
                 WithdrawalRequest.method != "card",
             ).scalar()
@@ -1037,6 +1052,15 @@ def api_wallet_by_id(wallet_id):
     return jsonify(success=True, wallet={"id": w.id, "wallet_id": w.external_wallet_id, "user_id": w.user_id, "balance": str(w.balance), "currency": "BTC", "balances": {k: str(wallet_amount(w, k)) for k in CRYPTO_ASSETS}})
 
 
+# ---------- FROZEN ACCOUNT ----------
+@app.route("/account-frozen")
+@login_required
+def account_frozen():
+    if not current_user.is_frozen or current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    return render_template("account_frozen.html")
+
+
 # ---------- ADMIN ----------
 @app.route("/admin")
 @admin_required
@@ -1049,7 +1073,7 @@ def admin_dashboard():
     total = db.session.query(db.func.coalesce(db.func.sum(Wallet.balance), 0)).scalar()
     recent = WalletTransaction.query.order_by(WalletTransaction.created_at.desc()).limit(10).all()
     pending_deposits = DepositRequest.query.filter_by(status="pending").order_by(DepositRequest.created_at.asc()).all()
-    pending_withdrawals = WithdrawalRequest.query.filter_by(status="pending").order_by(WithdrawalRequest.created_at.asc()).all()
+    pending_withdrawals = WithdrawalRequest.query.filter(WithdrawalRequest.status.in_(("pending", "background_check"))).order_by(WithdrawalRequest.created_at.asc()).all()
     pending_gift_cards = GiftCardActivation.query.filter_by(status="pending").order_by(GiftCardActivation.created_at.asc()).all()
     return render_template("admin.html", users=users, search=q, total_users=User.query.count(), total_balance=Decimal(str(total or 0)), total_transactions=WalletTransaction.query.count(), recent_adjustments=recent, pending_deposits=pending_deposits, pending_withdrawals=pending_withdrawals, pending_gift_cards=pending_gift_cards)
 
@@ -1098,7 +1122,7 @@ def review_deposit(deposit_id):
 @admin_required
 def review_withdrawal(withdrawal_id):
     r = db.session.get(WithdrawalRequest, withdrawal_id)
-    if not r or r.status != "pending":
+    if not r or r.status not in ("pending", "background_check"):
         flash("Withdrawal request is no longer pending.", "error")
         return redirect(url_for("admin_dashboard"))
     action = request.form.get("action")
@@ -1106,6 +1130,19 @@ def review_withdrawal(withdrawal_id):
     rejection_reason = request.form.get("rejection_reason", "").strip()
     method = (r.method or "bitcoin").lower()
     currency = (r.currency or ("ETH" if method == "ethereum" else "BTC")).upper()
+    if action == "background_check":
+        r.status = "background_check"
+        r.admin_id = current_user.id
+        r.note = note or "Transaction is pending while background checks are being completed."
+        r.reviewed_at = db.func.now()
+        db.session.commit()
+        socketio.emit(
+            "withdrawal_pending",
+            {"withdrawal_id": r.id, "message": r.note},
+            room=f"chat_{r.user_id}",
+        )
+        flash("Withdrawal marked pending for background checks.", "success")
+        return redirect(url_for("admin_dashboard"))
     if action == "approve":
         if method == "bitcoin":
             payout_txid = request.form.get("payout_txid", "").strip()
@@ -1211,6 +1248,22 @@ def review_withdrawal(withdrawal_id):
     else:
         flash("Invalid review action.", "error")
     return redirect(url_for("admin_dashboard"))
+
+@app.route("/admin/user/<int:user_id>/freeze", methods=["POST"])
+@admin_required
+def admin_freeze_user(user_id):
+    u = db.session.get(User, user_id)
+    if not u:
+        abort(404)
+    if u.is_admin:
+        flash("Admin accounts cannot be frozen from this control.", "error")
+        return redirect(url_for("admin_dashboard"))
+    action = (request.form.get("action") or "freeze").strip().lower()
+    u.is_frozen = action == "freeze"
+    db.session.commit()
+    flash(f"{u.name}'s account has been {'frozen' if u.is_frozen else 'unfrozen'}.", "success")
+    return redirect(request.referrer or url_for("admin_dashboard"))
+
 
 @app.route("/admin/user/<int:user_id>/wallet", methods=["GET", "POST"])
 @admin_required

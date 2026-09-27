@@ -19,37 +19,37 @@
     <span class="market-live"><span></span> LIVE</span>
   </div>
   <div class="market-grid" id="crypto-market">
-    <button type="button" class="market-card" data-coin="bitcoin" onclick="marketNotListed('Bitcoin')">
+    <button type="button" class="market-card" data-coin="bitcoin" onclick="openCryptoDeposit('BTC')">
       <div class="market-top"><span class="coin-icon">₿</span><div><b>Bitcoin</b><small>BTC</small></div><strong class="market-change loading">--</strong></div>
       <canvas class="market-chart" id="chart-bitcoin" height="74"></canvas>
       <div class="market-bottom"><span>BTC/USD</span><strong class="market-price loading">Loading…</strong></div>
     </button>
-    <button type="button" class="market-card" data-coin="ethereum" onclick="marketNotListed('Ethereum')">
+    <button type="button" class="market-card" data-coin="ethereum" onclick="openCryptoDeposit('ETH')">
       <div class="market-top"><span class="coin-icon">Ξ</span><div><b>Ethereum</b><small>ETH</small></div><strong class="market-change loading">--</strong></div>
       <canvas class="market-chart" id="chart-ethereum" height="74"></canvas>
       <div class="market-bottom"><span>ETH/USD</span><strong class="market-price loading">Loading…</strong></div>
     </button>
-    <button type="button" class="market-card" data-coin="solana" onclick="marketNotListed('Solana')">
+    <button type="button" class="market-card" data-coin="solana" onclick="openCryptoDeposit('SOL')">
       <div class="market-top"><span class="coin-icon">S</span><div><b>Solana</b><small>SOL</small></div><strong class="market-change loading">--</strong></div>
       <canvas class="market-chart" id="chart-solana" height="74"></canvas>
       <div class="market-bottom"><span>SOL/USD</span><strong class="market-price loading">Loading…</strong></div>
     </button>
-    <button type="button" class="market-card" data-coin="binancecoin" onclick="marketNotListed('BNB')">
+    <button type="button" class="market-card" data-coin="binancecoin" onclick="openCryptoDeposit('BNB')">
       <div class="market-top"><span class="coin-icon">◆</span><div><b>BNB</b><small>BNB</small></div><strong class="market-change loading">--</strong></div>
       <canvas class="market-chart" id="chart-binancecoin" height="74"></canvas>
       <div class="market-bottom"><span>BNB/USD</span><strong class="market-price loading">Loading…</strong></div>
     </button>
-    <button type="button" class="market-card" data-coin="ripple" onclick="marketNotListed('XRP')">
+    <button type="button" class="market-card" data-coin="ripple" onclick="openCryptoDeposit('XRP')">
       <div class="market-top"><span class="coin-icon">✕</span><div><b>XRP</b><small>XRP</small></div><strong class="market-change loading">--</strong></div>
       <canvas class="market-chart" id="chart-ripple" height="74"></canvas>
       <div class="market-bottom"><span>XRP/USD</span><strong class="market-price loading">Loading…</strong></div>
     </button>
-    <button type="button" class="market-card" data-coin="dogecoin" onclick="marketNotListed('Dogecoin')">
+    <button type="button" class="market-card" data-coin="dogecoin" onclick="openCryptoDeposit('DOGE')">
       <div class="market-top"><span class="coin-icon">Ð</span><div><b>Dogecoin</b><small>DOGE</small></div><strong class="market-change loading">--</strong></div>
       <canvas class="market-chart" id="chart-dogecoin" height="74"></canvas>
       <div class="market-bottom"><span>DOGE/USD</span><strong class="market-price loading">Loading…</strong></div>
     </button>
-    <button type="button" class="market-card" data-coin="cardano" onclick="marketNotListed('Cardano')">
+    <button type="button" class="market-card" data-coin="cardano" onclick="openCryptoDeposit('ADA')">
       <div class="market-top"><span class="coin-icon">₳</span><div><b>Cardano</b><small>ADA</small></div><strong class="market-change loading">--</strong></div>
       <canvas class="market-chart" id="chart-cardano" height="74"></canvas>
       <div class="market-bottom"><span>ADA/USD</span><strong class="market-price loading">Loading…</strong></div>
@@ -58,6 +58,7 @@
   <div class="market-status" id="market-status">Prices update automatically.</div>
 </section>
 {% if latest_approved %}<a class="approved-banner" href="{{url_for('withdrawal_success', withdrawal_id=latest_approved.id)}}"><span class="approved-check">✓</span><span><b>Withdrawal approved</b><small>{{latest_approved.amount|float|crypto_amount}} {{latest_approved.currency or "BTC"}} · View confirmation</small></span><strong>→</strong></a>{% endif %}<div class="heading"><div><h2>Recent statements</h2><p>Pending withdrawals: {{pending_withdrawals}}</p></div><a href="{{url_for('transactions')}}">View all →</a></div><div class="table">{% for t in recent_transactions %}<a class="row statement-row" href="{{url_for('transaction_detail', transaction_id=t.id)}}"><i class="{{t.transaction_type}}">{% if t.transaction_type=="debit" %}−{% elif t.transaction_type=="rejected" %}!{% else %}+{% endif %}</i><div><b>{{t.description}}</b><small>{{t.created_at.strftime('%d %b %Y, %I:%M %p')}} · {{'Bank transfer' if (t.transfer_type or 'crypto') == 'bank transfer' else 'Crypto'}} · Balance {{t.balance_after|float|crypto_amount}} {{t.currency or "BTC"}}</small></div><strong>{% if t.transaction_type=="debit" %}-{% elif t.transaction_type=="rejected" %}{% else %}+{% endif %}{{t.amount|float|crypto_amount}} {{t.currency or "BTC"}}</strong></a>{% else %}<div class="empty">No statements yet.</div>{% endfor %}</div><script>
+function openCryptoDeposit(currency){window.location.href='{{url_for("deposit")}}?currency='+encodeURIComponent(currency);}
 function marketNotListed(name){
   showMarketNotice(name + ' is not listed yet.');
 }

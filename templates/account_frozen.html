@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block title %}Account frozen{% endblock %}{% block content %}
+<section class="frozen-page">
+  <div class="frozen-card">
+    <img class="frozen-logo" src="{{ url_for('static', filename='img/bitbuy-logo.svg') }}" alt="BitBuy">
+    <div class="frozen-icon">🔒</div>
+    <small>ACCOUNT RESTRICTED</small>
+    <h1>Your account has been frozen</h1>
+    <p>Your account has been frozen. Please for more information chat customer support.</p>
+    <div class="frozen-actions">
+      <a class="btn primary" href="{{url_for('chat')}}">Chat customer support</a>
+      <a class="btn" href="{{url_for('logout')}}">Log out</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

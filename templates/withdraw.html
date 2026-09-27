@@ -53,7 +53,7 @@
   <div class="row">
     <i class="{{'debit' if r.status=='approved' else 'credit'}}">{% if r.status=='approved' %}−{% else %}•{% endif %}</i>
     <div>
-      <b>{% if (r.method or 'bitcoin') == 'card' %}${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}{% else %}{{r.amount|crypto_amount}} {{r.currency or ('ETH' if (r.method or '') == 'ethereum' else 'BTC')}} · {{r.currency or ('ETH' if (r.method or '') == 'ethereum' else 'BTC')}}{% endif %} · {{r.status|capitalize}}</b>
+      <b>{% if (r.method or 'bitcoin') == 'card' %}${{"{:,.2f}".format(r.usd_amount|float)}} USD · Card ••••{{r.card_last4 or '----'}}{% else %}{{r.amount|crypto_amount}} {{r.currency or ('ETH' if (r.method or '') == 'ethereum' else 'BTC')}} · {{r.currency or ('ETH' if (r.method or '') == 'ethereum' else 'BTC')}}{% endif %} · {% if r.status == 'background_check' %}Pending — background check{% else %}{{r.status|capitalize}}{% endif %}</b>
       <small>
         {% if (r.method or 'bitcoin') == 'card' %}Bank: {{r.bank_name}} · BTC debited when completed: {{r.amount|crypto_amount}} BTC{% else %}To <span class="mono">{{r.destination_address}}</span>{% endif %}
         {% if r.payout_txid %} · TXID: <span class="mono">{{r.payout_txid}}</span>{% endif %}
