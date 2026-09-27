@@ -184,7 +184,14 @@ footer{color:#657b96;border-color:var(--crypto-line)}
 @media(max-width:600px){.crypto-deposit-heading{flex-direction:column}.deposit-asset-grid{grid-template-columns:1fr 1fr}.crypto-admin-balances{grid-template-columns:1fr}.balance-picker-wrap{width:100%}.address-panel-top{align-items:flex-start;flex-direction:column}}
 
 
-.chat-unread{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-left:4px;border-radius:999px;font-size:11px;font-weight:800;line-height:1;background:#ff526f;color:#fff;}
+.chat-unread-dot{display:inline-block;width:8px;height:8px;margin-left:5px;border-radius:50%;background:#ff526f;box-shadow:0 0 10px rgba(255,82,111,.8);vertical-align:middle;animation:chatUnreadPulse 1.4s ease-in-out infinite;}
+.chat-inbox-indicator{display:inline-flex;align-items:center;gap:7px;margin-left:-4px;padding:6px 9px;border:1px solid rgba(66,232,255,.2);border-radius:10px;background:linear-gradient(145deg,#0b1729,#091322);color:#eef6ff;box-shadow:0 8px 24px rgba(0,0,0,.2);font-size:11px;font-weight:900;line-height:1;}
+.chat-inbox-icon{font-size:14px;color:#70dcff;line-height:1;}
+.chat-inbox-indicator b{min-width:16px;text-align:center;color:#fff;background:#ff526f;border-radius:999px;padding:3px 5px;box-shadow:0 0 12px rgba(255,82,111,.3);}
+.chat-user{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.chat-user-main{display:grid;gap:4px;min-width:0;}
+.chat-user-unread{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#ff526f;color:#fff;font-size:10px;font-weight:900;box-shadow:0 0 12px rgba(255,82,111,.25);}
+@keyframes chatUnreadPulse{50%{opacity:.45;transform:scale(.82)}}
 .global-chat-notification{position:fixed;right:20px;bottom:20px;z-index:9999;display:grid;gap:4px;max-width:340px;padding:13px 16px;border:1px solid rgba(66,232,255,.28);border-radius:14px;background:rgba(12,18,30,.96);box-shadow:0 12px 40px rgba(0,0,0,.35);opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;}
 .global-chat-notification.show{opacity:1;transform:translateY(0);}
 .global-chat-notification strong{font-size:13px;}

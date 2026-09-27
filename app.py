@@ -209,6 +209,7 @@ class ChatMessage(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     message = db.Column(db.Text, nullable=False)
+    read_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     user = db.relationship("User", foreign_keys=[user_id])
     sender = db.relationship("User", foreign_keys=[sender_id])
@@ -347,7 +348,10 @@ def ensure_schema():
         transaction_columns = {c["name"] for c in inspector.get_columns("wallet_transaction")}
         wallet_columns = {c["name"] for c in inspector.get_columns("wallet")}
         deposit_columns = {c["name"] for c in inspector.get_columns("deposit_request")}
+        chat_columns = {c["name"] for c in inspector.get_columns("chat_message")}
         with db.engine.begin() as conn:
+            if "read_at" not in chat_columns:
+                conn.exec_driver_sql("ALTER TABLE chat_message ADD COLUMN read_at TIMESTAMP")
             if "eth_balance" not in wallet_columns:
                 conn.exec_driver_sql("ALTER TABLE wallet ADD COLUMN eth_balance NUMERIC(18,8) DEFAULT 0")
             if "sol_balance" not in wallet_columns:
@@ -843,6 +847,43 @@ def profile():
 
 
 # ---------- CHAT ----------
+CHAT_ADMIN_NAME = "BitBuy"
+
+
+def chat_message_payload(m):
+    sender_name = CHAT_ADMIN_NAME if m.sender and m.sender.is_admin else (m.sender.name if m.sender else "Support")
+    return {
+        "id": m.id,
+        "user_id": m.user_id,
+        "sender_id": m.sender_id,
+        "sender_name": sender_name,
+        "message": m.message,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+    }
+
+
+def chat_unread_counts(user_id):
+    """Return total unread messages and, for admins, unread counts per customer."""
+    user = db.session.get(User, user_id)
+    if not user:
+        return {"total": 0, "by_user": {}}
+    if user.is_admin:
+        rows = db.session.query(ChatMessage.user_id, db.func.count(ChatMessage.id)).join(
+            User, User.id == ChatMessage.sender_id
+        ).filter(
+            ChatMessage.read_at.is_(None),
+            User.is_admin.is_(False)
+        ).group_by(ChatMessage.user_id).all()
+        by_user = {str(uid): int(count) for uid, count in rows}
+        return {"total": sum(by_user.values()), "by_user": by_user}
+    total = ChatMessage.query.join(User, User.id == ChatMessage.sender_id).filter(
+        ChatMessage.user_id == user.id,
+        ChatMessage.read_at.is_(None),
+        User.is_admin.is_(True)
+    ).count()
+    return {"total": total, "by_user": {str(user.id): total}}
+
+
 @app.route("/chat")
 @login_required
 def chat():
@@ -852,9 +893,28 @@ def chat():
         if selected and not User.query.get(selected):
             selected = None
         messages = ChatMessage.query.filter_by(user_id=selected).order_by(ChatMessage.created_at.asc()).all() if selected else []
-        return render_template("chat.html", admin_mode=True, users=users, selected_user_id=selected, messages=messages)
+        # Opening a customer conversation marks their incoming messages read for support.
+        if selected:
+            unread_ids = [m.id for m in ChatMessage.query.filter_by(user_id=selected, read_at=None).join(
+                User, User.id == ChatMessage.sender_id
+            ).filter(User.is_admin.is_(False)).all()]
+            if unread_ids:
+                ChatMessage.query.filter(ChatMessage.id.in_(unread_ids)).update(
+                    {ChatMessage.read_at: datetime.utcnow()}, synchronize_session=False
+                )
+                db.session.commit()
+        return render_template("chat.html", admin_mode=True, users=users, selected_user_id=selected, messages=messages, chat_admin_name=CHAT_ADMIN_NAME, unread_counts=chat_unread_counts(current_user.id))
     messages = ChatMessage.query.filter_by(user_id=current_user.id).order_by(ChatMessage.created_at.asc()).all()
-    return render_template("chat.html", admin_mode=False, users=[], selected_user_id=current_user.id, messages=messages)
+    # Opening support marks all support messages read for this customer.
+    unread_ids = [m.id for m in ChatMessage.query.filter_by(user_id=current_user.id, read_at=None).join(
+        User, User.id == ChatMessage.sender_id
+    ).filter(User.is_admin.is_(True)).all()]
+    if unread_ids:
+        ChatMessage.query.filter(ChatMessage.id.in_(unread_ids)).update(
+            {ChatMessage.read_at: datetime.utcnow()}, synchronize_session=False
+        )
+        db.session.commit()
+    return render_template("chat.html", admin_mode=False, users=[], selected_user_id=current_user.id, messages=messages, chat_admin_name=CHAT_ADMIN_NAME, unread_counts=chat_unread_counts(current_user.id))
 
 
 @app.route("/api/chat/messages")
@@ -870,7 +930,38 @@ def chat_messages():
     else:
         user_id = current_user.id
     messages = ChatMessage.query.filter_by(user_id=user_id).order_by(ChatMessage.created_at.asc()).all()
-    return jsonify(success=True, messages=[{"id": m.id, "user_id": m.user_id, "sender_id": m.sender_id, "sender_name": m.sender.name, "message": m.message, "created_at": m.created_at.isoformat() if m.created_at else None} for m in messages])
+    return jsonify(success=True, messages=[chat_message_payload(m) for m in messages])
+
+
+@app.route("/api/chat/unread")
+@login_required
+def chat_unread():
+    return jsonify(success=True, **chat_unread_counts(current_user.id))
+
+
+@app.route("/api/chat/read", methods=["POST"])
+@login_required
+def chat_mark_read():
+    target_user_id = request.json.get("user_id") if request.is_json else request.form.get("user_id")
+    target_user_id = int(target_user_id or current_user.id)
+    if current_user.is_admin:
+        if not User.query.get(target_user_id):
+            return jsonify(success=False, error="User not found"), 404
+        user_id = target_user_id
+        sender_admin = False
+    else:
+        user_id = current_user.id
+        sender_admin = True
+
+    unread_ids = [m.id for m in ChatMessage.query.filter_by(user_id=user_id, read_at=None).join(
+        User, User.id == ChatMessage.sender_id
+    ).filter(User.is_admin.is_(sender_admin)).all()]
+    if unread_ids:
+        ChatMessage.query.filter(ChatMessage.id.in_(unread_ids)).update(
+            {ChatMessage.read_at: datetime.utcnow()}, synchronize_session=False
+        )
+        db.session.commit()
+    return jsonify(success=True, **chat_unread_counts(current_user.id))
 
 
 @socketio.on("join_notifications")
@@ -909,7 +1000,7 @@ def send_message(data):
     m = ChatMessage(user_id=target, sender_id=current_user.id, message=text)
     db.session.add(m)
     db.session.commit()
-    payload = {"id": m.id, "user_id": m.user_id, "sender_id": m.sender_id, "sender_name": current_user.name, "message": m.message, "created_at": m.created_at.isoformat() if m.created_at else datetime.utcnow().isoformat()}
+    payload = chat_message_payload(m)
     emit("new_message", payload, room=f"chat_{target}")
     if current_user.is_admin:
         socketio.emit("new_message", payload, room=f"notify_{target}")
