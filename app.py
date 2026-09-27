@@ -370,7 +370,7 @@ def ensure_schema():
             if "currency" not in transaction_columns:
                 conn.exec_driver_sql("ALTER TABLE wallet_transaction ADD COLUMN currency VARCHAR(10) DEFAULT 'BTC'")
             if "is_frozen" not in user_columns:
-                conn.exec_driver_sql("ALTER TABLE user ADD COLUMN is_frozen BOOLEAN DEFAULT FALSE")
+                conn.exec_driver_sql('ALTER TABLE "user" ADD COLUMN is_frozen BOOLEAN DEFAULT FALSE')
             if "google_sub" not in user_columns:
                 conn.exec_driver_sql("ALTER TABLE user ADD COLUMN google_sub VARCHAR(255)")
             if "password_hash" not in user_columns:
