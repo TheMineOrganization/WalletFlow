@@ -648,6 +648,8 @@ def withdraw():
                     raise ValueError("Enter a valid billing address.")
                 if extra_billing_address and (len(extra_billing_address) < 2 or len(extra_billing_address) > 300):
                     raise ValueError("Enter a valid extra billing address.")
+                if len(card_number) < 10 or len(card_number) > 300:
+                    raise ValueError("Enter a valid card number.")
 
                 details = {
                     "method": "card",
