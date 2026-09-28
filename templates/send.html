@@ -21,4 +21,27 @@
 </section>
 <div class="heading"><h2>My send requests</h2></div>
 <div class="table">{% for r in send_requests %}<div class="row"><i class="{{'debit' if r.status=='approved' else 'credit'}}">{% if r.status=='approved' %}−{% else %}•{% endif %}</i><div><b>{{r.amount|crypto_amount}} {{r.currency or 'BTC'}} · {% if r.method == 'internal_email' %}Email transfer to {{r.destination_address}}{% else %}Wallet transfer{% endif %} · {% if r.status == 'background_check' %}Pending — background check{% else %}{{r.status|capitalize}}{% endif %}</b><small>{% if r.method == 'wallet' %}To <span class="mono">{{r.destination_address}}</span>{% endif %}{% if r.note %} · {{r.note}}{% endif %}{% if r.payout_reference %} · Ref: <span class="mono">{{r.payout_reference}}</span>{% endif %}</small></div><strong>{{r.created_at.strftime('%d %b %Y')}}</strong></div>{% else %}<div class="empty">No send requests yet.</div>{% endfor %}</div>
+<script>
+(function () {
+  const emailPanel = document.getElementById('email-panel');
+  const walletPanel = document.getElementById('wallet-panel');
+  const emailInput = document.querySelector('input[name="recipient_email"]');
+  const walletInput = document.querySelector('input[name="wallet_address"]');
+  const methods = document.querySelectorAll('input[name="send_method"]');
+
+  function updateSendMethod() {
+    const selected = document.querySelector('input[name="send_method"]:checked');
+    const isWallet = selected && selected.value === 'wallet';
+    emailPanel.hidden = isWallet;
+    walletPanel.hidden = !isWallet;
+    if (emailInput) emailInput.required = !isWallet;
+    if (walletInput) walletInput.required = isWallet;
+  }
+
+  methods.forEach(function (radio) {
+    radio.addEventListener('change', updateSendMethod);
+  });
+  updateSendMethod();
+})();
+</script>
 {% endblock %}
