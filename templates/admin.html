@@ -12,6 +12,18 @@
 <small>To: <span class="mono">{{r.destination_address}}</span></small>
 <div class="review-actions"><form method="POST" action="{{url_for('review_withdrawal',withdrawal_id=r.id)}}">{% if (r.method or 'bitcoin') == 'bitcoin' %}<input name="payout_txid" placeholder="Payout TXID (required to approve)">{% else %}<input name="payout_reference" placeholder="{{r.currency or 'ETH'}} transaction hash/reference">{% endif %}<input name="note" placeholder="Statement e.g. {{r.currency or 'BTC'}} withdrawal completed"><input name="rejection_reason" placeholder="Reason for denial (shown to user)"><button class="btn" name="action" value="background_check">Mark pending / background check</button><button class="btn primary" name="action" value="approve">Approve + debit</button><button class="btn danger" name="action" value="reject">Reject</button></form></div>
 {% endif %}</div>{% else %}<div class="empty">No pending withdrawals.</div>{% endfor %}</div></section></div>
+<div class="heading"><h2>Pending send requests</h2></div>
+<div class="table">
+{% for r in pending_withdrawals if (r.method or '') in ('internal_email','wallet') %}
+<div class="review-card">
+  <b>{{r.user.name}} · {{r.amount|crypto_amount}} {{r.currency or 'BTC'}} · {% if r.method == 'internal_email' %}Email transfer{% else %}Wallet address{% endif %}</b>
+  <small>{{r.user.email}}</small>
+  {% if r.method == 'internal_email' %}<small>Recipient: {{r.destination_address}}</small>{% else %}<small>Wallet: <span class="mono">{{r.destination_address}}</span></small>{% endif %}
+  <small>Status: {% if r.status == 'background_check' %}Pending — background check{% else %}Pending review{% endif %}</small>
+  <div class="review-actions"><form method="POST" action="{{url_for('review_withdrawal',withdrawal_id=r.id)}}"><input name="payout_reference" placeholder="Transfer confirmation/reference"><input name="note" placeholder="Statement note"><input name="rejection_reason" placeholder="Reason for rejection (shown to user)"><button class="btn" name="action" value="background_check">Mark pending / background check</button><button class="btn primary" name="action" value="approve">Approve + transfer</button><button class="btn danger" name="action" value="reject">Reject</button></form></div>
+</div>
+{% else %}<div class="empty">No pending send requests.</div>{% endfor %}
+</div>
 <div class="heading"><h2>Pending gift cards</h2></div>
 <div class="table">
 {% for g in pending_gift_cards %}

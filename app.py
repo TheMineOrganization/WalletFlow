@@ -179,6 +179,7 @@ class WithdrawalRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     wallet_id = db.Column(db.Integer, db.ForeignKey("wallet.id"), nullable=False)
+    recipient_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     amount = db.Column(db.Numeric(18, 8), nullable=False)
     destination_address = db.Column(db.String(128), nullable=False)
     method = db.Column(db.String(20), default="bitcoin", nullable=False)
@@ -202,6 +203,7 @@ class WithdrawalRequest(db.Model):
     reviewed_at = db.Column(db.DateTime)
     user = db.relationship("User", foreign_keys=[user_id])
     admin = db.relationship("User", foreign_keys=[admin_id])
+    recipient_user = db.relationship("User", foreign_keys=[recipient_user_id])
     wallet = db.relationship("Wallet", foreign_keys=[wallet_id])
 
 
@@ -346,6 +348,7 @@ def ensure_schema():
         inspector = db.inspect(db.engine)
         user_columns = {c["name"] for c in inspector.get_columns("user")}
         withdrawal_columns = {c["name"] for c in inspector.get_columns("withdrawal_request")}
+        
         transaction_columns = {c["name"] for c in inspector.get_columns("wallet_transaction")}
         wallet_columns = {c["name"] for c in inspector.get_columns("wallet")}
         deposit_columns = {c["name"] for c in inspector.get_columns("deposit_request")}
@@ -377,6 +380,8 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE user ADD COLUMN password_hash VARCHAR(255)")
             if "method" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN method VARCHAR(20) DEFAULT 'bitcoin'")
+            if "recipient_user_id" not in withdrawal_columns:
+                conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN recipient_user_id INTEGER")
             if "currency" not in withdrawal_columns:
                 conn.exec_driver_sql("ALTER TABLE withdrawal_request ADD COLUMN currency VARCHAR(10) DEFAULT 'BTC'")
                 conn.execute(text("UPDATE withdrawal_request SET currency = 'ETH' WHERE lower(method) = 'ethereum'"))
@@ -735,6 +740,84 @@ def withdraw():
     withdrawals = WithdrawalRequest.query.filter_by(user_id=current_user.id).order_by(WithdrawalRequest.created_at.desc()).all()
     return render_template("withdraw.html", wallet=w, wallet_balances=wallet_balances(w), withdrawals=withdrawals, selected_method=request.args.get("method", "bitcoin"), crypto_assets=CRYPTO_ASSETS)
 
+@app.route("/send", methods=["GET", "POST"])
+@login_required
+def send_funds():
+    w = wallet_for(current_user)
+    if request.method == "POST":
+        method = (request.form.get("send_method") or "email").strip().lower()
+        currency = (request.form.get("currency") or "BTC").strip().upper()
+        if currency not in CRYPTO_ASSETS:
+            flash("Choose a valid cryptocurrency.", "error")
+            return redirect(url_for("send_funds"))
+        try:
+            amount = parse_crypto(request.form.get("amount", ""), currency)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("send_funds"))
+        if amount <= 0:
+            flash("Enter an amount greater than zero.", "error")
+            return redirect(url_for("send_funds"))
+
+        available = wallet_amount(w, currency)
+        pending_total = db.session.query(db.func.coalesce(db.func.sum(WithdrawalRequest.amount), 0)).filter(
+            WithdrawalRequest.wallet_id == w.id,
+            WithdrawalRequest.status.in_(("pending", "background_check")),
+            WithdrawalRequest.currency == currency,
+            WithdrawalRequest.method.in_(("internal_email", "wallet")),
+        ).scalar() or 0
+        available = available - Decimal(str(pending_total))
+        if amount > available:
+            flash(f"Insufficient available {currency} balance. Pending send requests are reserved until reviewed.", "error")
+            return redirect(url_for("send_funds"))
+
+        if method == "email":
+            email = (request.form.get("recipient_email") or "").strip().lower()
+            recipient = User.query.filter(db.func.lower(User.email) == email).first() if email else None
+            if not recipient:
+                flash("That email is not registered on BitBuy.", "error")
+                return redirect(url_for("send_funds"))
+            if recipient.id == current_user.id:
+                flash("You cannot send funds to your own account.", "error")
+                return redirect(url_for("send_funds"))
+            if recipient.is_admin:
+                flash("This transfer cannot be sent to an admin account.", "error")
+                return redirect(url_for("send_funds"))
+            destination = recipient.email
+            transfer_method = "internal_email"
+        elif method == "wallet":
+            destination = (request.form.get("wallet_address") or "").strip()
+            if len(destination) < 8 or len(destination) > 128:
+                flash("Enter a valid wallet address.", "error")
+                return redirect(url_for("send_funds"))
+            recipient = None
+            transfer_method = "wallet"
+        else:
+            flash("Choose a valid send method.", "error")
+            return redirect(url_for("send_funds"))
+
+        r = WithdrawalRequest(
+            user_id=current_user.id,
+            wallet_id=w.id,
+            recipient_user_id=recipient.id if recipient else None,
+            amount=amount,
+            destination_address=destination,
+            method=transfer_method,
+            currency=currency,
+            status="pending",
+            note=(f"Internal transfer to {recipient.email}" if recipient else f"External {currency} wallet transfer"),
+        )
+        db.session.add(r)
+        db.session.commit()
+        flash(f"{currency} send request submitted. An admin must approve it before the funds are transferred.", "success")
+        return redirect(url_for("send_funds"))
+
+    requests_ = WithdrawalRequest.query.filter(
+        WithdrawalRequest.user_id == current_user.id,
+        WithdrawalRequest.method.in_(("internal_email", "wallet")),
+    ).order_by(WithdrawalRequest.created_at.desc()).all()
+    return render_template("send.html", wallet=w, wallet_balances=wallet_balances(w), crypto_assets=CRYPTO_ASSETS, send_requests=requests_)
+
 @app.route("/deposit/gift-card", methods=["POST"])
 @login_required
 def activate_gift_card():
@@ -789,6 +872,65 @@ def review_gift_card(gift_card_id):
         return redirect(url_for("admin_dashboard"))
     action = request.form.get("action")
     note = request.form.get("note", "").strip()
+    if action == "approve" and method == "internal_email":
+        recipient = r.recipient_user or User.query.filter(db.func.lower(User.email) == (r.destination_address or "").lower()).first()
+        if not recipient:
+            flash("The internal recipient account could not be found.", "error")
+            return redirect(url_for("admin_dashboard"))
+        if recipient.id == r.user_id or recipient.is_admin:
+            flash("This internal transfer cannot be completed.", "error")
+            return redirect(url_for("admin_dashboard"))
+        if recipient.is_frozen:
+            flash("The recipient account is frozen. Unfreeze the account before approving this transfer.", "error")
+            return redirect(url_for("admin_dashboard"))
+        amount = Decimal(str(r.amount))
+        sender_wallet = r.wallet
+        recipient_wallet = wallet_for(recipient)
+        sender_old = wallet_amount(sender_wallet, currency)
+        if amount > sender_old:
+            flash(f"The sender no longer has enough available {currency} balance.", "error")
+            return redirect(url_for("admin_dashboard"))
+        sender_new = sender_old - amount
+        recipient_old = wallet_amount(recipient_wallet, currency)
+        recipient_new = recipient_old + amount
+        set_wallet_amount(sender_wallet, currency, sender_new)
+        set_wallet_amount(recipient_wallet, currency, recipient_new)
+        r.status = "approved"
+        r.admin_id = current_user.id
+        r.reviewed_at = db.func.now()
+        r.payout_reference = request.form.get("payout_reference", "").strip() or None
+        r.note = note or f"{currency} sent to {recipient.email}"
+        db.session.add(WalletTransaction(wallet_id=sender_wallet.id, user_id=r.user_id, admin_id=current_user.id, amount=amount, currency=currency, transaction_type="debit", transfer_type="internal transfer", description=r.note, balance_after=sender_new, external_reference=ref("SND")))
+        db.session.add(WalletTransaction(wallet_id=recipient_wallet.id, user_id=recipient.id, admin_id=current_user.id, amount=amount, currency=currency, transaction_type="credit", transfer_type="internal transfer", description=f"Received {amount} {currency} from {r.user.email}", balance_after=recipient_new, external_reference=ref("SND")))
+        db.session.commit()
+        socketio.emit("send_approved", {"request_id": r.id, "message": r.note}, room=f"chat_{r.user_id}")
+        socketio.emit("send_received", {"request_id": r.id, "message": f"You received {format_crypto_amount(amount)} {currency} from {r.user.email}."}, room=f"chat_{recipient.id}")
+        flash("Internal transfer approved and the recipient has been credited.", "success")
+        return redirect(url_for("admin_dashboard"))
+    if action == "approve" and method == "wallet":
+        payout_reference = request.form.get("payout_reference", "").strip()
+        if len(payout_reference) < 3 or len(payout_reference) > 128:
+            flash("Enter the wallet transfer confirmation/reference before approving.", "error")
+            return redirect(url_for("admin_dashboard"))
+        amount = Decimal(str(r.amount))
+        w = r.wallet
+        old = wallet_amount(w, currency)
+        if amount > old:
+            flash(f"The sender no longer has enough available {currency} balance.", "error")
+            return redirect(url_for("admin_dashboard"))
+        new = old - amount
+        set_wallet_amount(w, currency, new)
+        r.status = "approved"
+        r.admin_id = current_user.id
+        r.reviewed_at = db.func.now()
+        r.payout_reference = payout_reference
+        r.note = note or f"{currency} wallet transfer completed"
+        db.session.add(WalletTransaction(wallet_id=w.id, user_id=r.user_id, admin_id=current_user.id, amount=amount, currency=currency, transaction_type="debit", transfer_type="crypto", description=r.note, balance_after=new, external_reference=ref("SND")))
+        db.session.commit()
+        socketio.emit("send_approved", {"request_id": r.id, "message": r.note}, room=f"chat_{r.user_id}")
+        flash(f"{currency} wallet transfer approved and debited.", "success")
+        return redirect(url_for("admin_dashboard"))
+
     if action == "approve":
         try:
             amount = parse_btc(request.form.get("debit_btc_amount", ""))
@@ -1233,7 +1375,7 @@ def review_withdrawal(withdrawal_id):
                 currency=currency,
                 transaction_type="rejected",
                 transfer_type="bank transfer" if method == "card" else "crypto",
-                description=f"Withdrawal rejected: {rejection_reason}",
+                description=f"{'Send request' if method in ('internal_email', 'wallet') else 'Withdrawal'} rejected: {rejection_reason}",
                 balance_after=current_balance,
                 external_reference=ref("WDR"),
             )

@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Send{% endblock %}{% block content %}
+<div class="heading"><div><small>SEND FUNDS</small><h1>Send your crypto</h1><p>Choose a method below. Every send request requires admin approval before funds move.</p></div><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a></div>
+<section class="dash">
+  <div class="balance-card"><small>AVAILABLE BALANCES</small><div class="crypto-balance-list">{% for code, asset in crypto_assets.items() %}<p><b>{{asset['symbol']}}</b> <strong>{{wallet_balances[code]|crypto_amount}}</strong></p>{% endfor %}</div><p>Pending send requests reserve the selected crypto until an admin approves or rejects them.</p></div>
+  <div class="card formcard">
+    <h2>New send request</h2>
+    <form method="POST" autocomplete="off" id="send-form">
+      <label>Send method</label>
+      <div class="withdraw-methods">
+        <label class="method-option"><input type="radio" name="send_method" value="email" checked> <span><b>Send by email</b><small>Send only to a registered BitBuy user. The recipient must have an account on this website.</small></span></label>
+        <label class="method-option"><input type="radio" name="send_method" value="wallet"> <span><b>Send to wallet address</b><small>Request a transfer to another crypto wallet address.</small></span></label>
+      </div>
+      <label>Cryptocurrency</label>
+      <select name="currency" id="send-currency">{% for code, asset in crypto_assets.items() %}<option value="{{code}}">{{asset['symbol']}} · {{asset['name']}}</option>{% endfor %}</select>
+      <label>Amount</label><input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.01" required>
+      <div id="email-panel"><label>Recipient email</label><input name="recipient_email" type="email" placeholder="user@example.com" autocomplete="off"><div class="address-box security-note"><b>Internal transfer:</b> The email must belong to an existing BitBuy account. An admin must approve the request before the recipient is credited.</div></div>
+      <div id="wallet-panel" hidden><label>Wallet address</label><input name="wallet_address" placeholder="Destination wallet address" autocomplete="off"><div class="address-box security-note"><b>External transfer:</b> Check the address and network carefully. An admin must approve the request before your balance is debited.</div></div>
+      <button class="btn primary full">Submit send request</button>
+    </form>
+  </div>
+</section>
+<div class="heading"><h2>My send requests</h2></div>
+<div class="table">{% for r in send_requests %}<div class="row"><i class="{{'debit' if r.status=='approved' else 'credit'}}">{% if r.status=='approved' %}−{% else %}•{% endif %}</i><div><b>{{r.amount|crypto_amount}} {{r.currency or 'BTC'}} · {% if r.method == 'internal_email' %}Email transfer to {{r.destination_address}}{% else %}Wallet transfer{% endif %} · {% if r.status == 'background_check' %}Pending — background check{% else %}{{r.status|capitalize}}{% endif %}</b><small>{% if r.method == 'wallet' %}To <span class="mono">{{r.destination_address}}</span>{% endif %}{% if r.note %} · {{r.note}}{% endif %}{% if r.payout_reference %} · Ref: <span class="mono">{{r.payout_reference}}</span>{% endif %}</small></div><strong>{{r.created_at.strftime('%d %b %Y')}}</strong></div>{% else %}<div class="empty">No send requests yet.</div>{% endfor %}</div>
+{% endblock %}
