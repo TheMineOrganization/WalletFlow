@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}BitWheels — Coming Soon{% endblock %}
+{% block content %}
+<style>
+  .bw-page{position:relative;min-height:calc(100vh - 72px);margin:-42px 0 -80px;overflow:hidden;background:#071018}
+  .bw-bg{position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(3,9,16,.90) 0%,rgba(3,9,16,.68) 44%,rgba(3,9,16,.30) 100%),url('{{ url_for('static', filename='img/bitwheels-coming-soon.jpg') }}');background-size:cover;background-position:center;filter:saturate(.95)}
+  .bw-content{position:relative;z-index:1;min-height:calc(100vh - 72px);display:flex;align-items:center;padding:70px 7%;color:#fff}
+  .bw-card{width:min(620px,100%)}
+  .bw-label{display:inline-flex;align-items:center;gap:9px;padding:9px 14px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.08);font-size:11px;font-weight:900;letter-spacing:.16em}
+  .bw-label i{width:7px;height:7px;border-radius:50%;background:#f6b84a}
+  .bw-card h1{font-size:clamp(52px,8vw,92px);line-height:.92;letter-spacing:-.06em;margin:22px 0 18px}
+  .bw-card h1 span{color:#f6b84a}
+  .bw-card p{font-size:18px;line-height:1.75;color:rgba(255,255,255,.76);max-width:590px}
+  .bw-soon{display:inline-flex;margin-top:22px;padding:14px 19px;border-radius:12px;background:#fff;color:#101828;font-weight:900;letter-spacing:.08em;font-size:12px}
+  .bw-back{display:inline-block;margin-top:18px;color:#fff;text-decoration:none;font-weight:700;border-bottom:1px solid rgba(255,255,255,.45);padding-bottom:3px}
+  @media(max-width:650px){.bw-page{margin:-42px 0 -80px}.bw-content{padding:55px 6%}.bw-bg{background-position:58% center}.bw-card h1{font-size:55px}.bw-card p{font-size:16px}}
+</style>
+<section class="bw-page">
+  <div class="bw-bg" aria-hidden="true"></div>
+  <div class="bw-content">
+    <div class="bw-card">
+      <div class="bw-label"><i></i> APEX STERLING GROUP · AUTOMOTIVE</div>
+      <h1>BIT<span>WHEELS</span></h1>
+      <p>BitWheels is ASG's online automotive dealership and vehicle marketplace, created to modernize the way people discover, purchase, and access vehicles.</p>
+      <div class="bw-soon">COMING SOON</div>
+      <br>
+      <a class="bw-back" href="{{ url_for('index') }}">← Back to Apex Sterling Group</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

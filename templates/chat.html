@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}Chat{% endblock %}{% block content %}
-<div class="heading"><div><small>LIVE SUPPORT</small><h1>Chat with support</h1><p>{% if admin_mode %}Reply to customers from either admin account.{% else %}Talk directly with the BitBuy admins online.{% endif %}</p></div></div>
+<div class="heading"><div><small>LIVE SUPPORT</small><h1>Chat with support</h1><p>{% if admin_mode %}Reply to customers from either admin account.{% else %}Talk directly with the <a href="{{ url_for('bitbuy') }}">BitBuy</a> admins online.{% endif %}</p></div></div>
 <div class="chat-layout {% if not admin_mode %}customer-chat{% endif %}">
   {% if admin_mode %}<aside class="chat-users card"><h3>Customers</h3><div class="online-admin"><span></span> {{ chat_admin_name }} support online</div>{% for u in users %}<a class="chat-user {% if u.id == selected_user_id %}selected{% endif %}" data-chat-user-id="{{u.id}}" href="{{url_for('chat', user_id=u.id)}}"><span class="chat-user-main"><strong>{{u.name}}</strong><small>{{u.email}}</small></span>{% set customer_unread = unread_counts.by_user.get(u.id|string, 0) %}{% if customer_unread %}<span class="chat-user-unread">{{ customer_unread if customer_unread < 100 else '99+' }}</span>{% endif %}</a>{% else %}<div class="empty">No customers yet.</div>{% endfor %}</aside>{% endif %}
   <section class="chat-box card">

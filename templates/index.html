@@ -26,13 +26,17 @@
   .asg-business.bitwheels .asg-watermark{color:#3157d5;opacity:.10}
   .asg-logo{position:relative;z-index:1;width:min(250px,70%);height:auto;margin-bottom:24px}
   .asg-business h3{position:relative;z-index:1;font-size:27px;margin:0 0 9px;letter-spacing:-.025em}
+  .asg-brand-link{color:#fff;text-decoration:none}.asg-brand-link.dark{color:#101828}.asg-brand-link:hover{text-decoration:underline}
+  .asg-inline-link{font-weight:800;text-decoration:none}.asg-inline-link:hover{text-decoration:underline}
+  .asg-business.bitbuy .asg-inline-link{color:#fff}.asg-business.bitwheels .asg-inline-link{color:#3157d5}
+  .asg-logo{display:block}
   .asg-business p{position:relative;z-index:1;line-height:1.7;margin:0;color:#667085}
   .asg-business.bitbuy p{color:rgba(255,255,255,.72)}
   .asg-business ul{position:relative;z-index:1;padding-left:20px;margin:16px 0 0;color:#667085;line-height:1.8}
   .asg-business.bitbuy ul{color:rgba(255,255,255,.72)}
   .asg-business-action{position:relative;z-index:1;margin-top:auto;padding-top:25px}
   .asg-business-action .btn{border-radius:12px}
-  .asg-coming{display:inline-flex;align-items:center;gap:8px;padding:11px 15px;border-radius:12px;background:#101828;color:#fff;font-size:12px;font-weight:900;letter-spacing:.08em}
+  .asg-coming{text-decoration:none;display:inline-flex;align-items:center;gap:8px;padding:11px 15px;border-radius:12px;background:#101828;color:#fff;font-size:12px;font-weight:900;letter-spacing:.08em}
   .asg-coming:before{content:"";width:7px;height:7px;border-radius:50%;background:#f6b84a}
   .asg-copy{max-width:920px;margin:auto;background:rgba(255,255,255,.76);border:1px solid #e4e9f2;border-radius:25px;padding:32px;box-shadow:0 18px 45px rgba(16,24,40,.05)}
   .asg-copy h2{font-size:27px;margin:0 0 12px;color:#101828}
@@ -44,7 +48,7 @@
   .asg-list b{color:#101828}
   .asg-ecosystem{text-align:center;padding:34px 20px}
   .asg-flow{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:24px}
-  .asg-node{padding:16px 20px;border-radius:15px;border:1px solid #dce3ee;background:#fff;font-weight:900;color:#101828;box-shadow:0 10px 25px rgba(16,24,40,.05)}
+  .asg-node{text-decoration:none;display:block;padding:16px 20px;border-radius:15px;border:1px solid #dce3ee;background:#fff;font-weight:900;color:#101828;box-shadow:0 10px 25px rgba(16,24,40,.05)}
   .asg-node.primary{background:#101828;color:#fff;border-color:#101828}
   .asg-arrow{font-size:22px;color:#98a2b3}
   .asg-commit{margin-top:22px}
@@ -84,23 +88,23 @@
       <div class="asg-businesses">
         <article class="asg-business bitbuy">
           <img class="asg-watermark" src="{{ url_for('static', filename='img/bitbuy-logo.svg') }}" alt="" aria-hidden="true">
-          <img class="asg-logo" src="{{ url_for('static', filename='img/bitbuy-logo.svg') }}" alt="BitBuy">
-          <h3>BITBUY — Digital Assets &amp; Crypto Services</h3>
-          <p>BitBuy is a digital cryptocurrency wallet and brokerage platform designed to provide users with a convenient way to manage, buy, sell, and transact with digital assets.</p>
+          <a href="{{ url_for('bitbuy') }}" aria-label="Open BitBuy"><img class="asg-logo" src="{{ url_for('static', filename='img/bitbuy-logo.svg') }}" alt="BitBuy"></a>
+          <h3><a class="asg-brand-link" href="{{ url_for('bitbuy') }}">BITBUY</a> — Digital Assets &amp; Crypto Services</h3>
+          <p><a class="asg-inline-link" href="{{ url_for('bitbuy') }}">BitBuy</a> is a digital cryptocurrency wallet and brokerage platform designed to provide users with a convenient way to manage, buy, sell, and transact with digital assets.</p>
           <p style="margin-top:12px">The platform is built around simplicity, accessibility, and security, giving users an easy-to-understand environment for interacting with cryptocurrency and digital finance.</p>
           <div class="asg-business-action">
-            <a class="btn primary" href="{{ url_for('login') }}">Enter BitBuy</a>
+            <a class="btn primary" href="{{ url_for('bitbuy') }}">Enter BitBuy</a>
           </div>
         </article>
 
         <article class="asg-business bitwheels">
           <img class="asg-watermark" src="{{ url_for('static', filename='img/bitwheels-logo.svg') }}" alt="" aria-hidden="true">
-          <img class="asg-logo" src="{{ url_for('static', filename='img/bitwheels-logo.svg') }}" alt="BitWheels by ASG">
-          <h3>BITWHEELS — Online Automotive Marketplace</h3>
-          <p>BitWheels is ASG's online automotive dealership and vehicle marketplace, created to modernize the way people discover, purchase, and access vehicles.</p>
-          <p style="margin-top:12px">BitWheels brings the automotive buying experience online, allowing customers to explore available vehicles and access essential information before making purchasing decisions.</p>
+          <a href="{{ url_for('bitwheels') }}" aria-label="Open BitWheels"><img class="asg-logo" src="{{ url_for('static', filename='img/bitwheels-logo.svg') }}" alt="BitWheels by ASG"></a>
+          <h3><a class="asg-brand-link dark" href="{{ url_for('bitwheels') }}">BITWHEELS</a> — Online Automotive Marketplace</h3>
+          <p><a class="asg-inline-link" href="{{ url_for('bitwheels') }}">BitWheels</a> is ASG's online automotive dealership and vehicle marketplace, created to modernize the way people discover, purchase, and access vehicles.</p>
+          <p style="margin-top:12px"><a class="asg-inline-link" href="{{ url_for('bitwheels') }}">BitWheels</a> brings the automotive buying experience online, allowing customers to explore available vehicles and access essential information before making purchasing decisions.</p>
           <div class="asg-business-action">
-            <span class="asg-coming">COMING SOON</span>
+            <a class="asg-coming" href="{{ url_for('bitwheels') }}">COMING SOON</a>
           </div>
         </article>
       </div>
@@ -133,8 +137,8 @@
       <div class="asg-flow">
         <div class="asg-node primary">APEX STERLING GROUP (ASG)</div>
         <span class="asg-arrow">↓</span>
-        <div class="asg-node">BITBUY — Digital Assets &amp; Crypto Services</div>
-        <div class="asg-node">BITWHEELS — Online Automotive Dealership &amp; Marketplace</div>
+        <a class="asg-node" href="{{ url_for('bitbuy') }}">BITBUY — Digital Assets &amp; Crypto Services</a>
+        <a class="asg-node" href="{{ url_for('bitwheels') }}">BITWHEELS — Online Automotive Dealership &amp; Marketplace</a>
       </div>
       <p style="margin-top:22px">As the group grows, ASG intends to expand its portfolio into additional sectors where technology can improve how people access products, services, and opportunities.</p>
     </section>

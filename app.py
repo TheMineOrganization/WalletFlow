@@ -88,7 +88,7 @@ WELCOME_BONUS_BTC = Decimal("0.00650000")
 GIFT_CARD_UPLOAD_DIR = os.path.join(app.instance_path, "gift_cards")
 os.makedirs(GIFT_CARD_UPLOAD_DIR, exist_ok=True)
 GIFT_CARD_TYPES = {"apple": "Apple Card", "google": "Google Play", "amazon": "Amazon", "steam": "Steam", "other": "Other"}
-app.jinja_env.globals.update(app_name="BitBuy", currency_symbol=CURRENCY_SYMBOL, btc_deposit_address=BTC_DEPOSIT_ADDRESS)
+app.jinja_env.globals.update(app_name="Apex Sterling Group (ASG)", currency_symbol=CURRENCY_SYMBOL, btc_deposit_address=BTC_DEPOSIT_ADDRESS)
 
 
 class User(UserMixin, db.Model):
@@ -454,6 +454,18 @@ def index():
     return redirect(url_for("dashboard")) if current_user.is_authenticated else render_template("index.html")
 
 
+@app.route("/bitbuy")
+def bitbuy():
+    """Public entry point for the BitBuy business page."""
+    return redirect(url_for("dashboard")) if current_user.is_authenticated else redirect(url_for("login"))
+
+
+@app.route("/bitwheels")
+def bitwheels():
+    """BitWheels landing page while the automotive marketplace is being built."""
+    return render_template("bitwheels.html")
+
+
 @app.route("/register")
 def register():
     if current_user.is_authenticated:
@@ -543,6 +555,30 @@ def google_callback():
 def logout():
     logout_user()
     return redirect(url_for("login"))
+
+
+@app.route("/api/crypto-market")
+@login_required
+def crypto_market():
+    """Proxy live market data through Flask so browser CORS/rate-limit issues do not hide the charts."""
+    ids = "bitcoin,ethereum,solana,binancecoin,ripple,dogecoin,cardano"
+    try:
+        response = requests.get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params={
+                "vs_currency": "usd",
+                "ids": ids,
+                "sparkline": "true",
+                "price_change_percentage": "24h",
+            },
+            timeout=12,
+            headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
+        )
+        response.raise_for_status()
+        return jsonify(response.json())
+    except requests.RequestException as exc:
+        app.logger.warning("Crypto market request failed: %s", exc)
+        return jsonify({"error": "Live market data is temporarily unavailable."}), 502
 
 
 @app.route("/dashboard")

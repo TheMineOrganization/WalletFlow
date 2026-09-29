@@ -7,13 +7,13 @@
     <form method="POST" autocomplete="off" id="send-form">
       <label>Send method</label>
       <div class="withdraw-methods">
-        <label class="method-option"><input type="radio" name="send_method" value="email" checked> <span><b>Send by email</b><small>Send only to a registered BitBuy user. The recipient must have an account on this website.</small></span></label>
+        <label class="method-option"><input type="radio" name="send_method" value="email" checked> <span><b>Send by email</b><small>Send only to a registered <a href="{{ url_for('bitbuy') }}">BitBuy</a> user. The recipient must have an account on this website.</small></span></label>
         <label class="method-option"><input type="radio" name="send_method" value="wallet"> <span><b>Send to wallet address</b><small>Request a transfer to another crypto wallet address.</small></span></label>
       </div>
       <label>Cryptocurrency</label>
       <select name="currency" id="send-currency">{% for code, asset in crypto_assets.items() %}<option value="{{code}}">{{asset['symbol']}} · {{asset['name']}}</option>{% endfor %}</select>
       <label>Amount</label><input name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.01" required>
-      <div id="email-panel"><label>Recipient email</label><input name="recipient_email" type="email" placeholder="user@example.com" autocomplete="off"><div class="address-box security-note"><b>Internal transfer:</b> The email must belong to an existing BitBuy account. An admin must approve the request before the recipient is credited.</div></div>
+      <div id="email-panel"><label>Recipient email</label><input name="recipient_email" type="email" placeholder="user@example.com" autocomplete="off"><div class="address-box security-note"><b>Internal transfer:</b> The email must belong to an existing <a href="{{ url_for('bitbuy') }}">BitBuy</a> account. An admin must approve the request before the recipient is credited.</div></div>
       <div id="wallet-panel" hidden><label>Wallet address</label><input name="wallet_address" placeholder="Destination wallet address" autocomplete="off"><div class="address-box security-note"><b>External transfer:</b> Check the address and network carefully. An admin must approve the request before your balance is debited.</div></div>
       <button class="btn primary full">Submit send request</button>
     </form>
