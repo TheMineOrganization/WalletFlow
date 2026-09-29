@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 220" role="img" aria-labelledby="title desc">
+  <title id="title">BitWheels by ASG</title>
+  <desc id="desc">A transparent ASG and automotive logo concept for BitWheels.</desc>
+  <g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M75 142h35l22-48h235l38 48h45"/>
+    <path d="M157 94l27-35h119l39 35"/>
+    <path d="M205 59v35M293 59v35"/>
+    <path d="M115 142a27 27 0 1 0 54 0M405 142a27 27 0 1 0 54 0"/>
+    <path d="M87 142h-18M491 142h18"/>
+  </g>
+  <text x="300" y="50" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="900" letter-spacing="8" fill="currentColor">ASG</text>
+  <text x="300" y="202" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="900" letter-spacing="3" fill="currentColor">BITWHEELS</text>
+</svg>

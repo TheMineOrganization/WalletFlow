@@ -1,1 +1,151 @@
-{% extends "base.html" %}{% block title %}BitBuy{% endblock %}{% block content %}<section class="hero"><div><small>BITCOIN WALLET</small><h1>One wallet.<br><span>Simple control.</span></h1><p>Deposit Bitcoin to the platform receiving address, request withdrawals, and keep a clear BTC statement for every balance change.</p><a class="btn primary" href="{{url_for('register')}}">Get started</a> <a class="btn" href="{{url_for('login')}}">Sign in</a></div><div class="hero-card"><small>Receiving address</small><strong class="address-hero">{{btc_deposit_address}}</strong><p>Bitcoin mainnet · deposits are manually verified</p></div></section><section class="features"><div><b>01</b><h3>Deposit BTC</h3><p>Users send Bitcoin to your receiving address and submit the transaction ID for verification.</p></div><div><b>02</b><h3>Admin approvals</h3><p>Admins approve deposits and withdrawals before the internal wallet ledger changes.</p></div><div><b>03</b><h3>Statements</h3><p>Every credit and debit has an amount, description, reference and balance-after value.</p></div></section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Apex Sterling Group (ASG){% endblock %}
+{% block content %}
+<style>
+  .asg-home{position:relative;overflow:hidden;padding:20px 0 55px}
+  .asg-home:before,.asg-home:after{content:"";position:absolute;border-radius:50%;filter:blur(2px);pointer-events:none;z-index:0}
+  .asg-home:before{width:420px;height:420px;right:-180px;top:-120px;background:rgba(37,99,235,.10)}
+  .asg-home:after{width:360px;height:360px;left:-190px;bottom:120px;background:rgba(15,159,110,.08)}
+  .asg-wrap{position:relative;z-index:1;width:min(1120px,100%);margin:auto}
+  .asg-hero{padding:70px 0 45px;text-align:center}
+  .asg-kicker{display:inline-flex;align-items:center;gap:9px;padding:8px 14px;border:1px solid #dbe4f0;border-radius:999px;background:rgba(255,255,255,.78);color:#3157d5;font-size:11px;font-weight:900;letter-spacing:.16em}
+  .asg-kicker i{width:7px;height:7px;border-radius:50%;background:#3157d5;display:block}
+  .asg-hero h1{font-size:clamp(42px,7vw,76px);line-height:.98;letter-spacing:-.055em;margin:20px auto 16px;color:#101828}
+  .asg-hero h1 span{background:linear-gradient(100deg,#3157d5,#0f9f6e);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .asg-hero>p{max-width:820px;margin:0 auto;color:#667085;font-size:17px;line-height:1.8}
+  .asg-section{margin-top:55px}
+  .asg-heading{text-align:center;max-width:760px;margin:0 auto 30px}
+  .asg-heading h2{font-size:32px;letter-spacing:-.035em;margin:0 0 9px;color:#101828}
+  .asg-heading p{color:#667085;line-height:1.7;margin:0}
+  .asg-businesses{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+  .asg-business{position:relative;min-height:390px;border:1px solid #e4e9f2;border-radius:28px;overflow:hidden;padding:30px;display:flex;flex-direction:column;box-shadow:0 22px 55px rgba(16,24,40,.08);background:#fff}
+  .asg-business.bitbuy{background:linear-gradient(145deg,#0b1220 0%,#111b31 60%,#17284b 100%);color:#fff;border-color:#26385e}
+  .asg-business.bitwheels{background:linear-gradient(145deg,#f8fafc,#eef3f8);color:#101828}
+  .asg-watermark{position:absolute;right:-28px;bottom:-8px;width:72%;height:auto;opacity:.08;pointer-events:none}
+  .asg-business.bitbuy .asg-watermark{opacity:.10}
+  .asg-business.bitwheels .asg-watermark{color:#3157d5;opacity:.10}
+  .asg-logo{position:relative;z-index:1;width:min(250px,70%);height:auto;margin-bottom:24px}
+  .asg-business h3{position:relative;z-index:1;font-size:27px;margin:0 0 9px;letter-spacing:-.025em}
+  .asg-business p{position:relative;z-index:1;line-height:1.7;margin:0;color:#667085}
+  .asg-business.bitbuy p{color:rgba(255,255,255,.72)}
+  .asg-business ul{position:relative;z-index:1;padding-left:20px;margin:16px 0 0;color:#667085;line-height:1.8}
+  .asg-business.bitbuy ul{color:rgba(255,255,255,.72)}
+  .asg-business-action{position:relative;z-index:1;margin-top:auto;padding-top:25px}
+  .asg-business-action .btn{border-radius:12px}
+  .asg-coming{display:inline-flex;align-items:center;gap:8px;padding:11px 15px;border-radius:12px;background:#101828;color:#fff;font-size:12px;font-weight:900;letter-spacing:.08em}
+  .asg-coming:before{content:"";width:7px;height:7px;border-radius:50%;background:#f6b84a}
+  .asg-copy{max-width:920px;margin:auto;background:rgba(255,255,255,.76);border:1px solid #e4e9f2;border-radius:25px;padding:32px;box-shadow:0 18px 45px rgba(16,24,40,.05)}
+  .asg-copy h2{font-size:27px;margin:0 0 12px;color:#101828}
+  .asg-copy p{color:#667085;line-height:1.8;margin:0 0 16px}
+  .asg-copy p:last-child{margin-bottom:0}
+  .asg-mission{display:grid;grid-template-columns:1fr 1.15fr;gap:22px}
+  .asg-list{display:grid;gap:10px}
+  .asg-list div{padding:14px 16px;border:1px solid #e6eaf0;border-radius:13px;background:#fff;color:#667085;line-height:1.55}
+  .asg-list b{color:#101828}
+  .asg-ecosystem{text-align:center;padding:34px 20px}
+  .asg-flow{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:24px}
+  .asg-node{padding:16px 20px;border-radius:15px;border:1px solid #dce3ee;background:#fff;font-weight:900;color:#101828;box-shadow:0 10px 25px rgba(16,24,40,.05)}
+  .asg-node.primary{background:#101828;color:#fff;border-color:#101828}
+  .asg-arrow{font-size:22px;color:#98a2b3}
+  .asg-commit{margin-top:22px}
+  .asg-tagline{text-align:center;margin:48px 0 0;font-weight:800;color:#3157d5;font-size:16px}
+  @media(max-width:800px){
+    .asg-hero{padding:45px 0 30px}
+    .asg-businesses,.asg-mission{grid-template-columns:1fr}
+    .asg-business{min-height:360px}
+    .asg-copy{padding:24px}
+    .asg-arrow{transform:rotate(90deg)}
+  }
+  @media(max-width:500px){
+    .asg-home{padding-left:2px;padding-right:2px}
+    .asg-hero h1{font-size:42px}
+    .asg-hero>p{font-size:15px}
+    .asg-business{padding:24px;border-radius:22px}
+    .asg-logo{width:220px}
+  }
+</style>
+
+<section class="asg-home">
+  <div class="asg-wrap">
+    <section class="asg-hero">
+      <div class="asg-kicker"><i></i> APEX STERLING GROUP</div>
+      <h1>APEX STERLING GROUP <span>(ASG)</span></h1>
+      <p><strong>Empowering Digital Finance. Driving Modern Commerce.</strong></p>
+      <p style="margin-top:14px">Apex Sterling Group (ASG) is a diversified company focused on building and operating modern businesses across digital finance, cryptocurrency, and automotive commerce. Through innovative technology, customer-focused services, and a commitment to reliability, ASG is developing a connected ecosystem designed to make financial and commercial services more accessible, convenient, and efficient.</p>
+      <p style="margin-top:14px">Our approach is built around identifying opportunities in rapidly evolving industries and transforming them into practical services that meet the needs of today's consumers.</p>
+    </section>
+
+    <section class="asg-section">
+      <div class="asg-heading">
+        <h2>Our Businesses</h2>
+        <p>Two focused businesses, connected by one technology-driven group.</p>
+      </div>
+
+      <div class="asg-businesses">
+        <article class="asg-business bitbuy">
+          <img class="asg-watermark" src="{{ url_for('static', filename='img/bitbuy-logo.svg') }}" alt="" aria-hidden="true">
+          <img class="asg-logo" src="{{ url_for('static', filename='img/bitbuy-logo.svg') }}" alt="BitBuy">
+          <h3>BITBUY — Digital Assets &amp; Crypto Services</h3>
+          <p>BitBuy is a digital cryptocurrency wallet and brokerage platform designed to provide users with a convenient way to manage, buy, sell, and transact with digital assets.</p>
+          <p style="margin-top:12px">The platform is built around simplicity, accessibility, and security, giving users an easy-to-understand environment for interacting with cryptocurrency and digital finance.</p>
+          <div class="asg-business-action">
+            <a class="btn primary" href="{{ url_for('login') }}">Enter BitBuy</a>
+          </div>
+        </article>
+
+        <article class="asg-business bitwheels">
+          <img class="asg-watermark" src="{{ url_for('static', filename='img/bitwheels-logo.svg') }}" alt="" aria-hidden="true">
+          <img class="asg-logo" src="{{ url_for('static', filename='img/bitwheels-logo.svg') }}" alt="BitWheels by ASG">
+          <h3>BITWHEELS — Online Automotive Marketplace</h3>
+          <p>BitWheels is ASG's online automotive dealership and vehicle marketplace, created to modernize the way people discover, purchase, and access vehicles.</p>
+          <p style="margin-top:12px">BitWheels brings the automotive buying experience online, allowing customers to explore available vehicles and access essential information before making purchasing decisions.</p>
+          <div class="asg-business-action">
+            <span class="asg-coming">COMING SOON</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="asg-section asg-copy">
+      <h2>Our Vision</h2>
+      <p>Our vision is to build a trusted group of technology-driven businesses that simplify everyday transactions and create new opportunities across emerging industries.</p>
+      <p>ASG believes the future of commerce will increasingly be shaped by technology, digital platforms, and connected ecosystems. We are therefore committed to building businesses that adapt to changing consumer needs while maintaining strong standards of service, innovation, and trust.</p>
+    </section>
+
+    <section class="asg-section">
+      <div class="asg-copy">
+        <h2>Our Mission</h2>
+        <p>Our mission is to develop reliable, technology-powered businesses that make financial and commercial services easier to access.</p>
+        <div class="asg-list">
+          <div><b>Innovation</b> — developing modern solutions for changing markets.</div>
+          <div><b>Accessibility</b> — making complex services easier for everyday users.</div>
+          <div><b>Trust</b> — building businesses around transparency, reliability, and responsible service.</div>
+          <div><b>Technology</b> — using digital platforms to improve traditional business models.</div>
+          <div><b>Customer Experience</b> — creating simple, efficient, and convenient experiences.</div>
+          <div><b>Growth</b> — continuously identifying new opportunities across emerging industries.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="asg-section asg-copy asg-ecosystem">
+      <h2>The ASG Ecosystem</h2>
+      <p>Apex Sterling Group operates with a long-term vision of building multiple complementary businesses under one organization.</p>
+      <div class="asg-flow">
+        <div class="asg-node primary">APEX STERLING GROUP (ASG)</div>
+        <span class="asg-arrow">↓</span>
+        <div class="asg-node">BITBUY — Digital Assets &amp; Crypto Services</div>
+        <div class="asg-node">BITWHEELS — Online Automotive Dealership &amp; Marketplace</div>
+      </div>
+      <p style="margin-top:22px">As the group grows, ASG intends to expand its portfolio into additional sectors where technology can improve how people access products, services, and opportunities.</p>
+    </section>
+
+    <section class="asg-section asg-copy asg-commit">
+      <h2>Our Commitment</h2>
+      <p>At Apex Sterling Group, we understand that building successful businesses requires more than technology. It requires trust, consistency, innovation, and a clear understanding of the people we serve.</p>
+      <p>We are committed to continuously improving our platforms, strengthening our services, and creating businesses that can grow alongside the communities and markets they serve.</p>
+    </section>
+
+    <p class="asg-tagline">Apex Sterling Group — building businesses for the digital age.</p>
+  </div>
+</section>
+{% endblock %}
