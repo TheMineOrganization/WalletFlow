@@ -1,6 +1,7 @@
 import os
 import re
 import secrets
+import requests
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from functools import wraps
 from datetime import datetime
