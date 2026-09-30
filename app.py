@@ -1,10 +1,12 @@
 import os
 import re
+import json
 import secrets
 import requests
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from functools import wraps
 from datetime import datetime
+from threading import Lock
 from types import SimpleNamespace
 
 from authlib.integrations.flask_client import OAuth
@@ -84,6 +86,10 @@ CRYPTO_ASSETS = {
 }
 CURRENCY_SYMBOL = "BTC"
 ADMIN_EMAILS = {"privateid1100@gmail.com", "cstones625@gmail.com"}
+COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", os.getenv("COINGECKO_DEMO_API_KEY", "")).strip()
+MARKET_CACHE_SECONDS = 55
+_market_cache = {"timestamp": 0.0, "data": None}
+_market_cache_lock = Lock()
 BTC_PLACES = Decimal("0.00000001")
 USD_PLACES = Decimal("0.01")
 WELCOME_BONUS_BTC = Decimal("0.00650000")
@@ -559,28 +565,94 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _market_from_coingecko():
+    ids = "bitcoin,ethereum,solana,binancecoin,ripple,dogecoin,cardano"
+    headers = {"Accept": "application/json", "User-Agent": "WalletFlow/1.0"}
+    params = {
+        "vs_currency": "usd",
+        "ids": ids,
+        "sparkline": "true",
+        "price_change_percentage": "24h",
+    }
+    if COINGECKO_API_KEY:
+        # CoinGecko Demo keys are valid on api.coingecko.com and should stay server-side.
+        headers["x-cg-demo-api-key"] = COINGECKO_API_KEY
+    response = requests.get(
+        "https://api.coingecko.com/api/v3/coins/markets",
+        params=params,
+        timeout=12,
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, list) or not data:
+        raise ValueError("CoinGecko returned no market rows")
+    return data
+
+
 @app.route("/api/crypto-market")
 @login_required
 def crypto_market():
-    """Proxy live market data through Flask so browser CORS/rate-limit issues do not hide the charts."""
-    ids = "bitcoin,ethereum,solana,binancecoin,ripple,dogecoin,cardano"
+    """Return cached live market data, with a Binance fallback for chart reliability."""
+    import time
+    now = time.monotonic()
+    with _market_cache_lock:
+        cached = _market_cache.get("data")
+        if cached and now - _market_cache.get("timestamp", 0) < MARKET_CACHE_SECONDS:
+            return jsonify(cached)
+
     try:
-        response = requests.get(
-            "https://api.coingecko.com/api/v3/coins/markets",
-            params={
-                "vs_currency": "usd",
-                "ids": ids,
-                "sparkline": "true",
-                "price_change_percentage": "24h",
-            },
-            timeout=12,
-            headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
-        )
-        response.raise_for_status()
-        return jsonify(response.json())
-    except requests.RequestException as exc:
-        app.logger.warning("Crypto market request failed: %s", exc)
-        return jsonify({"error": "Live market data is temporarily unavailable."}), 502
+        data = _market_from_coingecko()
+    except (requests.RequestException, ValueError) as exc:
+        app.logger.warning("CoinGecko market request failed; using Binance fallback: %s", exc)
+        try:
+            # Binance provides public spot ticker and candlestick endpoints.
+            pairs = {
+                "bitcoin": "BTCUSDT", "ethereum": "ETHUSDT", "solana": "SOLUSDT",
+                "binancecoin": "BNBUSDT", "ripple": "XRPUSDT", "dogecoin": "DOGEUSDT",
+                "cardano": "ADAUSDT",
+            }
+            tickers = requests.get(
+                "https://api.binance.com/api/v3/ticker/24hr",
+                params={"symbols": json.dumps(list(pairs.values()), separators=(",", ":"))},
+                timeout=12,
+                headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
+            )
+            tickers.raise_for_status()
+            ticker_by_symbol = {row["symbol"]: row for row in tickers.json()}
+            data = []
+            for coin_id, symbol in pairs.items():
+                ticker = ticker_by_symbol.get(symbol)
+                if not ticker:
+                    continue
+                klines = requests.get(
+                    "https://api.binance.com/api/v3/klines",
+                    params={"symbol": symbol, "interval": "4h", "limit": 42},
+                    timeout=12,
+                    headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
+                )
+                klines.raise_for_status()
+                prices = [float(row[4]) for row in klines.json() if len(row) > 4]
+                data.append({
+                    "id": coin_id,
+                    "current_price": float(ticker["lastPrice"]),
+                    "price_change_percentage_24h": float(ticker["priceChangePercent"]),
+                    "sparkline_in_7d": {"price": prices},
+                })
+            if not data:
+                raise ValueError("Binance returned no market rows")
+        except (requests.RequestException, ValueError, KeyError, TypeError) as fallback_exc:
+            app.logger.warning("Binance market fallback failed: %s", fallback_exc)
+            with _market_cache_lock:
+                cached = _market_cache.get("data")
+            if cached:
+                return jsonify(cached)
+            return jsonify({"error": "Live market data is temporarily unavailable."}), 502
+
+    with _market_cache_lock:
+        _market_cache["timestamp"] = now
+        _market_cache["data"] = data
+    return jsonify(data)
 
 
 def customer_statement_rows(user_id, limit=None, query=None):
@@ -1264,7 +1336,7 @@ def api_wallet_transactions():
     w = wallet_for(current_user)
     limit = min(max(request.args.get("limit", 20, type=int), 1), 100)
     tx = WalletTransaction.query.filter_by(wallet_id=w.id).order_by(WalletTransaction.created_at.desc()).limit(limit).all()
-    return jsonify(success=True, wallet_id=w.external_wallet_id, transactions=[{"id": t.id, "reference": t.external_reference, "type": t.transaction_type, "transfer_type": t.transfer_type or "crypto", "currency": t.currency or "BTC", "amount": str(t.amount), "description": t.description, "balance_after": str(t.balance_after), "created_at": t.created_at.isoformat() if t.created_at else None} for t in tx])
+    return jsonify(success=True, wallet_id=w.external_wallet_id, transactions=[{"id": t.id, "reference": t.external_reference, "type": t.transaction_type, "transfer_type": t.transfer_type or "crypto", "currency": t.currency or "BTC", "amount": str(t.amount), "description": t.description, "created_at": t.created_at.isoformat() if t.created_at else None} for t in tx])
 
 
 @app.route("/api/wallet/<wallet_id>")
@@ -1297,9 +1369,16 @@ def admin_dashboard():
     total = db.session.query(db.func.coalesce(db.func.sum(Wallet.balance), 0)).scalar()
     recent = WalletTransaction.query.order_by(WalletTransaction.created_at.desc()).limit(10).all()
     pending_deposits = DepositRequest.query.filter_by(status="pending").order_by(DepositRequest.created_at.asc()).all()
-    pending_withdrawals = WithdrawalRequest.query.filter(WithdrawalRequest.status.in_(("pending", "background_check"))).order_by(WithdrawalRequest.created_at.asc()).all()
+    pending_withdrawals = WithdrawalRequest.query.filter(
+        WithdrawalRequest.status.in_(("pending", "background_check")),
+        ~WithdrawalRequest.method.in_(("internal_email", "wallet", "email")),
+    ).order_by(WithdrawalRequest.created_at.asc()).all()
+    pending_send_requests = WithdrawalRequest.query.filter(
+        WithdrawalRequest.status.in_(("pending", "background_check")),
+        WithdrawalRequest.method.in_(("internal_email", "wallet", "email")),
+    ).order_by(WithdrawalRequest.created_at.asc()).all()
     pending_gift_cards = GiftCardActivation.query.filter_by(status="pending").order_by(GiftCardActivation.created_at.asc()).all()
-    return render_template("admin.html", users=users, search=q, total_users=User.query.count(), total_balance=Decimal(str(total or 0)), total_transactions=WalletTransaction.query.count(), recent_adjustments=recent, pending_deposits=pending_deposits, pending_withdrawals=pending_withdrawals, pending_gift_cards=pending_gift_cards)
+    return render_template("admin.html", users=users, search=q, total_users=User.query.count(), total_balance=Decimal(str(total or 0)), total_transactions=WalletTransaction.query.count(), recent_adjustments=recent, pending_deposits=pending_deposits, pending_withdrawals=pending_withdrawals, pending_send_requests=pending_send_requests, pending_gift_cards=pending_gift_cards)
 
 @app.route("/admin/transactions")
 @admin_required
@@ -1353,6 +1432,9 @@ def review_withdrawal(withdrawal_id):
     note = request.form.get("note", "").strip()
     rejection_reason = request.form.get("rejection_reason", "").strip()
     method = (r.method or "bitcoin").lower()
+    if method == "email":
+        method = "internal_email"
+        r.method = method
     currency = (r.currency or ("ETH" if method == "ethereum" else "BTC")).upper()
     if action == "background_check":
         r.status = "background_check"

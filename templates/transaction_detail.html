@@ -6,6 +6,5 @@
   <div><span>Amount</span><strong>{{"-" if transaction.transaction_type=="debit" else "+"}}{{transaction.amount|float|crypto_amount}} {{transaction.currency or "BTC"}}</strong></div>
   <div><span>Time</span><strong>{{transaction.created_at.strftime('%d %b %Y, %I:%M:%S %p')}}</strong></div>
   <div><span>Reference</span><strong class="mono">{{transaction.external_reference}}</strong></div>
-  <div><span>Balance after</span><strong>{{transaction.balance_after|float|crypto_amount}} {{transaction.currency or "BTC"}}</strong></div>
 </div>
 {% endblock %}
