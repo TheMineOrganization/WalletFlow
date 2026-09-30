@@ -1,1 +1,24 @@
-{% extends "base.html" %}{% block title %}Sign in{% endblock %}{% block content %}<div class="auth"><div class="card"><small>GOOGLE AUTHENTICATION</small><h1>Sign in</h1><p>Use your real Google account. <a href="{{ url_for('bitbuy') }}">BitBuy</a> accepts only Google-verified email addresses.</p>{% if google_configured %}<a class="btn google-btn full" href="{{url_for('google_login')}}"><span class="google-mark">G</span> Continue with Google</a>{% else %}<div class="flash error static-flash">Google OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env file.</div>{% endif %}<p class="auth-note">No password or manually entered email is used for new accounts.</p></div></div>{% endblock %}
+{% extends "base.html" %}{% block title %}Sign in to BitBuy{% endblock %}{% block content %}
+<div class="auth">
+  <div class="card login-card">
+    <small>BITBUY · DIGITAL ASSETS &amp; CRYPTO SERVICES</small>
+    <h1>Sign in to BitBuy</h1>
+    <p>Access your BitBuy wallet through Apex Sterling Group (ASG). BitBuy is designed to give customers a simple place to manage digital assets, review wallet activity, and access available crypto services.</p>
+
+    <div class="login-features">
+      <div><b>Digital asset wallet</b><span>View supported crypto balances and wallet activity in one place.</span></div>
+      <div><b>Crypto services</b><span>Access available deposit, withdrawal, and transfer features from your BitBuy account.</span></div>
+      <div><b>Live market view</b><span>Follow current crypto prices and 24-hour market movement from the dashboard.</span></div>
+    </div>
+
+    <p class="login-note">BitBuy uses Google authentication for account access. Your Google account must have a verified email address.</p>
+    {% if google_configured %}
+      <a class="btn google-btn full" href="{{url_for('google_login')}}"><span class="google-mark">G</span> Continue with Google</a>
+    {% else %}
+      <div class="flash error static-flash">Google OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env file.</div>
+    {% endif %}
+    <p class="auth-note">No password or manually entered email is used for new accounts.</p>
+    <a class="btn full login-back" href="{{url_for('index')}}">← Back to ASG Home</a>
+  </div>
+</div>
+{% endblock %}

@@ -211,3 +211,17 @@ footer{color:#657b96;border-color:var(--crypto-line)}
 
 @media(max-width:850px){.bank-actions{grid-template-columns:1fr}}
 @media(max-width:600px){.bank-action{padding:12px}.bank-action-copy small{font-size:10px}}
+
+/* Customer statement pending state + richer BitBuy sign-in page */
+.pending-statement{border-left:3px solid #f6b84a;background:rgba(246,184,74,.035)}
+.pending-statement:hover{background:rgba(246,184,74,.07)!important}
+.row i.pending{background:rgba(246,184,74,.12);color:#f6c15b}
+.pending-label{color:#f6c15b!important;font-size:12px;line-height:1.35;text-align:right}
+.pending-label span{color:#8ea1bb;font-size:11px;font-weight:700}
+.login-card{overflow:hidden}
+.login-features{display:grid;gap:10px;margin:20px 0}
+.login-features>div{padding:13px 14px;border:1px solid rgba(66,232,255,.12);border-radius:13px;background:rgba(57,167,255,.045);display:grid;gap:4px}
+.login-features b{font-size:13px;color:#eef6ff}
+.login-features span{font-size:12px;line-height:1.5;color:#8ea1bb}
+.login-note{font-size:13px!important;line-height:1.55!important;color:#8ea1bb!important}
+.login-back{margin-top:10px}

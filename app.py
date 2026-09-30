@@ -4,6 +4,7 @@ import secrets
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from functools import wraps
 from datetime import datetime
+from types import SimpleNamespace
 
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
@@ -581,14 +582,60 @@ def crypto_market():
         return jsonify({"error": "Live market data is temporarily unavailable."}), 502
 
 
+def customer_statement_rows(user_id, limit=None, query=None):
+    """Build customer-facing statements without creating duplicate DB transactions.
+
+    Pending withdrawal requests are shown as pending statements until an admin
+    reviews them. Once approved/rejected, the normal WalletTransaction record
+    remains the source of the completed/rejected transaction statement.
+    """
+    transactions = WalletTransaction.query.filter_by(user_id=user_id)
+    if query:
+        transactions = transactions.filter(WalletTransaction.description.ilike(f"%{query}%"))
+    rows = []
+    for t in transactions.order_by(WalletTransaction.created_at.desc()).all():
+        rows.append(t)
+
+    pending = WithdrawalRequest.query.filter(
+        WithdrawalRequest.user_id == user_id,
+        WithdrawalRequest.status.in_(("pending", "background_check")),
+    ).order_by(WithdrawalRequest.created_at.desc()).all()
+    for r in pending:
+        if r.method == "card":
+            description = "Card withdrawal request"
+            transfer_type = "bank transfer"
+        else:
+            asset = CRYPTO_ASSETS.get((r.currency or "BTC").upper(), {})
+            description = f"{asset.get('name', r.currency or 'Crypto')} withdrawal request"
+            transfer_type = "crypto"
+        rows.append(SimpleNamespace(
+            id=None,
+            withdrawal_id=r.id,
+            statement_kind="pending_withdrawal",
+            transaction_type="pending",
+            transfer_type=transfer_type,
+            currency=r.currency or "BTC",
+            description=description,
+            amount=r.amount,
+            usd_amount=r.usd_amount,
+            created_at=r.created_at,
+            external_reference=f"WD-{r.id}",
+            balance_after=None,
+            pending_status=r.status,
+        ))
+
+    rows.sort(key=lambda row: row.created_at or datetime.min, reverse=True)
+    return rows[:limit] if limit else rows
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
     w = wallet_for(current_user)
-    tx = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(WalletTransaction.created_at.desc()).limit(8).all()
+    statements = customer_statement_rows(current_user.id, limit=8)
     pending_withdrawals = WithdrawalRequest.query.filter(WithdrawalRequest.user_id == current_user.id, WithdrawalRequest.status.in_(("pending", "background_check"))).count()
     latest_approved = WithdrawalRequest.query.filter_by(user_id=current_user.id, status="approved").order_by(WithdrawalRequest.reviewed_at.desc()).first()
-    return render_template("dashboard.html", wallet=w, wallet_balances=wallet_balances(w), crypto_assets=CRYPTO_ASSETS, recent_transactions=tx, pending_withdrawals=pending_withdrawals, latest_approved=latest_approved)
+    return render_template("dashboard.html", wallet=w, wallet_balances=wallet_balances(w), crypto_assets=CRYPTO_ASSETS, recent_transactions=statements, pending_withdrawals=pending_withdrawals, latest_approved=latest_approved)
 
 
 @app.route("/deposit", methods=["GET", "POST"])
@@ -1011,10 +1058,8 @@ def withdrawal_success(withdrawal_id):
 @login_required
 def transactions():
     q = request.args.get("q", "").strip()
-    x = WalletTransaction.query.filter_by(user_id=current_user.id)
-    if q:
-        x = x.filter(WalletTransaction.description.ilike(f"%{q}%"))
-    return render_template("transactions.html", transactions=x.order_by(WalletTransaction.created_at.desc()).all(), query=q)
+    statements = customer_statement_rows(current_user.id, query=q)
+    return render_template("transactions.html", transactions=statements, query=q)
 
 
 @app.route("/transactions/<int:transaction_id>")
