@@ -593,183 +593,67 @@ def _market_from_coingecko():
 @app.route("/api/crypto-market")
 @login_required
 def crypto_market():
-    """Return live crypto market data with multiple fallbacks."""
+    """Return cached live market data, with a Binance fallback for chart reliability."""
     import time
-
     now = time.monotonic()
-
-    # Use fresh cached data first.
     with _market_cache_lock:
         cached = _market_cache.get("data")
-        cached_at = _market_cache.get("timestamp", 0)
+        if cached and now - _market_cache.get("timestamp", 0) < MARKET_CACHE_SECONDS:
+            return jsonify(cached)
 
-    if cached and now - cached_at < MARKET_CACHE_SECONDS:
-        return jsonify(cached)
-
-    # ---------------------------------------------------------
-    # 1. PRIMARY SOURCE: CoinGecko
-    # ---------------------------------------------------------
     try:
         data = _market_from_coingecko()
-
-        with _market_cache_lock:
-            _market_cache["timestamp"] = now
-            _market_cache["data"] = data
-
-        return jsonify(data)
-
-    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
-        app.logger.warning(
-            "CoinGecko market request failed: %s",
-            exc
-        )
-
-    # ---------------------------------------------------------
-    # 2. FALLBACK: Binance
-    # ---------------------------------------------------------
-    try:
-        pairs = {
-            "bitcoin": "BTCUSDT",
-            "ethereum": "ETHUSDT",
-            "solana": "SOLUSDT",
-            "binancecoin": "BNBUSDT",
-            "ripple": "XRPUSDT",
-            "dogecoin": "DOGEUSDT",
-            "cardano": "ADAUSDT",
-        }
-
-        headers = {
-            "Accept": "application/json",
-            "User-Agent": "WalletFlow/1.0",
-        }
-
-        tickers = requests.get(
-            "https://api.binance.com/api/v3/ticker/24hr",
-            params={
-                "symbols": json.dumps(
-                    list(pairs.values()),
-                    separators=(",", ":")
-                )
-            },
-            timeout=8,
-            headers=headers,
-        )
-
-        tickers.raise_for_status()
-
-        ticker_json = tickers.json()
-
-        if not isinstance(ticker_json, list):
-            raise ValueError("Binance returned invalid ticker data")
-
-        ticker_by_symbol = {
-            row["symbol"]: row
-            for row in ticker_json
-            if isinstance(row, dict) and row.get("symbol")
-        }
-
-        data = []
-
-        for coin_id, symbol in pairs.items():
-            ticker = ticker_by_symbol.get(symbol)
-
-            if not ticker:
-                continue
-
-            try:
-                current_price = float(ticker["lastPrice"])
-                change_24h = float(ticker["priceChangePercent"])
-            except (KeyError, TypeError, ValueError):
-                continue
-
-            prices = []
-
-            # Get chart history. If history fails, we can still
-            # return the current price and 24h change.
-            try:
+    except (requests.RequestException, ValueError) as exc:
+        app.logger.warning("CoinGecko market request failed; using Binance fallback: %s", exc)
+        try:
+            # Binance provides public spot ticker and candlestick endpoints.
+            pairs = {
+                "bitcoin": "BTCUSDT", "ethereum": "ETHUSDT", "solana": "SOLUSDT",
+                "binancecoin": "BNBUSDT", "ripple": "XRPUSDT", "dogecoin": "DOGEUSDT",
+                "cardano": "ADAUSDT",
+            }
+            tickers = requests.get(
+                "https://api.binance.com/api/v3/ticker/24hr",
+                params={"symbols": json.dumps(list(pairs.values()), separators=(",", ":"))},
+                timeout=12,
+                headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
+            )
+            tickers.raise_for_status()
+            ticker_by_symbol = {row["symbol"]: row for row in tickers.json()}
+            data = []
+            for coin_id, symbol in pairs.items():
+                ticker = ticker_by_symbol.get(symbol)
+                if not ticker:
+                    continue
                 klines = requests.get(
                     "https://api.binance.com/api/v3/klines",
-                    params={
-                        "symbol": symbol,
-                        "interval": "4h",
-                        "limit": 42,
-                    },
-                    timeout=8,
-                    headers=headers,
+                    params={"symbol": symbol, "interval": "4h", "limit": 42},
+                    timeout=12,
+                    headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
                 )
-
                 klines.raise_for_status()
-
-                rows = klines.json()
-
-                if isinstance(rows, list):
-                    prices = [
-                        float(row[4])
-                        for row in rows
-                        if isinstance(row, list)
-                        and len(row) > 4
-                    ]
-
-            except (
-                requests.RequestException,
-                ValueError,
-                TypeError,
-                KeyError,
-            ) as chart_exc:
-                app.logger.warning(
-                    "Binance chart history failed for %s: %s",
-                    symbol,
-                    chart_exc,
-                )
-
-            # Make sure the chart has at least the current price.
-            if not prices:
-                prices = [current_price]
-
-            data.append({
-                "id": coin_id,
-                "current_price": current_price,
-                "price_change_percentage_24h": change_24h,
-                "sparkline_in_7d": {
-                    "price": prices
-                },
-            })
-
-        if data:
+                prices = [float(row[4]) for row in klines.json() if len(row) > 4]
+                data.append({
+                    "id": coin_id,
+                    "current_price": float(ticker["lastPrice"]),
+                    "price_change_percentage_24h": float(ticker["priceChangePercent"]),
+                    "sparkline_in_7d": {"price": prices},
+                })
+            if not data:
+                raise ValueError("Binance returned no market rows")
+        except (requests.RequestException, ValueError, KeyError, TypeError) as fallback_exc:
+            app.logger.warning("Binance market fallback failed: %s", fallback_exc)
             with _market_cache_lock:
-                _market_cache["timestamp"] = now
-                _market_cache["data"] = data
+                cached = _market_cache.get("data")
+            if cached:
+                return jsonify(cached)
+            return jsonify({"error": "Live market data is temporarily unavailable."}), 502
 
-            return jsonify(data)
-
-        raise ValueError("Binance returned no usable market data")
-
-    except (
-        requests.RequestException,
-        ValueError,
-        KeyError,
-        TypeError,
-    ) as exc:
-        app.logger.warning(
-            "Binance market fallback failed: %s",
-            exc
-        )
-
-    # ---------------------------------------------------------
-    # 3. FALLBACK: previously cached market data
-    # ---------------------------------------------------------
     with _market_cache_lock:
-        cached = _market_cache.get("data")
+        _market_cache["timestamp"] = now
+        _market_cache["data"] = data
+    return jsonify(data)
 
-    if cached:
-        return jsonify(cached)
-
-    # ---------------------------------------------------------
-    # 4. Nothing available
-    # ---------------------------------------------------------
-    return jsonify({
-        "error": "Live market data is temporarily unavailable."
-    }), 502
 
 def customer_statement_rows(user_id, limit=None, query=None):
     """Build customer-facing statements without creating duplicate DB transactions.
@@ -1144,65 +1028,6 @@ def review_gift_card(gift_card_id):
         return redirect(url_for("admin_dashboard"))
     action = request.form.get("action")
     note = request.form.get("note", "").strip()
-    if action == "approve" and method == "internal_email":
-        recipient = r.recipient_user or User.query.filter(db.func.lower(User.email) == (r.destination_address or "").lower()).first()
-        if not recipient:
-            flash("The internal recipient account could not be found.", "error")
-            return redirect(url_for("admin_dashboard"))
-        if recipient.id == r.user_id or recipient.is_admin:
-            flash("This internal transfer cannot be completed.", "error")
-            return redirect(url_for("admin_dashboard"))
-        if recipient.is_frozen:
-            flash("The recipient account is frozen. Unfreeze the account before approving this transfer.", "error")
-            return redirect(url_for("admin_dashboard"))
-        amount = Decimal(str(r.amount))
-        sender_wallet = r.wallet
-        recipient_wallet = wallet_for(recipient)
-        sender_old = wallet_amount(sender_wallet, currency)
-        if amount > sender_old:
-            flash(f"The sender no longer has enough available {currency} balance.", "error")
-            return redirect(url_for("admin_dashboard"))
-        sender_new = sender_old - amount
-        recipient_old = wallet_amount(recipient_wallet, currency)
-        recipient_new = recipient_old + amount
-        set_wallet_amount(sender_wallet, currency, sender_new)
-        set_wallet_amount(recipient_wallet, currency, recipient_new)
-        r.status = "approved"
-        r.admin_id = current_user.id
-        r.reviewed_at = db.func.now()
-        r.payout_reference = request.form.get("payout_reference", "").strip() or None
-        r.note = note or f"{currency} sent to {recipient.email}"
-        db.session.add(WalletTransaction(wallet_id=sender_wallet.id, user_id=r.user_id, admin_id=current_user.id, amount=amount, currency=currency, transaction_type="debit", transfer_type="internal transfer", description=r.note, balance_after=sender_new, external_reference=ref("SND")))
-        db.session.add(WalletTransaction(wallet_id=recipient_wallet.id, user_id=recipient.id, admin_id=current_user.id, amount=amount, currency=currency, transaction_type="credit", transfer_type="internal transfer", description=f"Received {amount} {currency} from {r.user.email}", balance_after=recipient_new, external_reference=ref("SND")))
-        db.session.commit()
-        socketio.emit("send_approved", {"request_id": r.id, "message": r.note}, room=f"chat_{r.user_id}")
-        socketio.emit("send_received", {"request_id": r.id, "message": f"You received {format_crypto_amount(amount)} {currency} from {r.user.email}."}, room=f"chat_{recipient.id}")
-        flash("Internal transfer approved and the recipient has been credited.", "success")
-        return redirect(url_for("admin_dashboard"))
-    if action == "approve" and method == "wallet":
-        payout_reference = request.form.get("payout_reference", "").strip()
-        if len(payout_reference) < 3 or len(payout_reference) > 128:
-            flash("Enter the wallet transfer confirmation/reference before approving.", "error")
-            return redirect(url_for("admin_dashboard"))
-        amount = Decimal(str(r.amount))
-        w = r.wallet
-        old = wallet_amount(w, currency)
-        if amount > old:
-            flash(f"The sender no longer has enough available {currency} balance.", "error")
-            return redirect(url_for("admin_dashboard"))
-        new = old - amount
-        set_wallet_amount(w, currency, new)
-        r.status = "approved"
-        r.admin_id = current_user.id
-        r.reviewed_at = db.func.now()
-        r.payout_reference = payout_reference
-        r.note = note or f"{currency} wallet transfer completed"
-        db.session.add(WalletTransaction(wallet_id=w.id, user_id=r.user_id, admin_id=current_user.id, amount=amount, currency=currency, transaction_type="debit", transfer_type="crypto", description=r.note, balance_after=new, external_reference=ref("SND")))
-        db.session.commit()
-        socketio.emit("send_approved", {"request_id": r.id, "message": r.note}, room=f"chat_{r.user_id}")
-        flash(f"{currency} wallet transfer approved and debited.", "success")
-        return redirect(url_for("admin_dashboard"))
-
     if action == "approve":
         try:
             amount = parse_btc(request.form.get("debit_btc_amount", ""))
@@ -1541,81 +1366,253 @@ def review_deposit(deposit_id):
 @admin_required
 def review_withdrawal(withdrawal_id):
     r = db.session.get(WithdrawalRequest, withdrawal_id)
+
     if not r or r.status not in ("pending", "background_check"):
         flash("Withdrawal request is no longer pending.", "error")
         return redirect(url_for("admin_dashboard"))
+
     action = request.form.get("action")
     note = request.form.get("note", "").strip()
     rejection_reason = request.form.get("rejection_reason", "").strip()
+
     method = (r.method or "bitcoin").lower()
+
     if method == "email":
         method = "internal_email"
         r.method = method
-    currency = (r.currency or ("ETH" if method == "ethereum" else "BTC")).upper()
+
+    currency = (
+        r.currency
+        or ("ETH" if method == "ethereum" else "BTC")
+    ).upper()
+
     if action == "background_check":
         r.status = "background_check"
         r.admin_id = current_user.id
-        r.note = note or "Transaction is pending while background checks are being completed."
+        r.note = (
+            note
+            or "Transaction is pending while background checks are being completed."
+        )
         r.reviewed_at = db.func.now()
+
         db.session.commit()
+
         socketio.emit(
             "withdrawal_pending",
-            {"withdrawal_id": r.id, "message": r.note},
+            {
+                "withdrawal_id": r.id,
+                "message": r.note,
+            },
             room=f"chat_{r.user_id}",
         )
+
         flash("Withdrawal marked pending for background checks.", "success")
         return redirect(url_for("admin_dashboard"))
-    if action == "approve":
-        if method == "bitcoin":
-            payout_txid = request.form.get("payout_txid", "").strip()
-            if len(payout_txid) < 20 or len(payout_txid) > 128:
-                flash("Enter the Bitcoin payout TXID after sending the BTC.", "error")
-                return redirect(url_for("admin_dashboard"))
-            payout_reference = None
-            amount = Decimal(str(r.amount))
-        elif method == "card":
-            payout_reference = request.form.get("payout_reference", "").strip()
-            if len(payout_reference) < 3 or len(payout_reference) > 128:
-                flash("Enter the transfer confirmation/reference after completing the payout.", "error")
-                return redirect(url_for("admin_dashboard"))
-            try:
-                amount = parse_btc(request.form.get("debit_btc_amount", ""))
-            except ValueError as exc:
-                flash(f"Enter the BTC amount to debit after the USD transfer: {exc}", "error")
-                return redirect(url_for("admin_dashboard"))
-            currency = "BTC"
-        else:
-            payout_reference = request.form.get("payout_reference", "").strip()
-            if len(payout_reference) < 3 or len(payout_reference) > 128:
-                flash("Enter the transfer confirmation/reference after completing the crypto payout.", "error")
-                return redirect(url_for("admin_dashboard"))
-            # Older Ethereum requests stored the requested ETH amount in usd_amount
-            # and left amount at zero. Keep those existing requests reviewable.
-            if method == "ethereum" and Decimal(str(r.amount or 0)) == Decimal("0") and r.usd_amount is not None:
-                amount = Decimal(str(r.usd_amount))
-            else:
-                amount = Decimal(str(r.amount))
+
+    if action == "approve" and method == "internal_email":
+        recipient = r.recipient_user
+
+        if not recipient and r.destination_address:
+            recipient = User.query.filter(
+                db.func.lower(User.email)
+                == r.destination_address.lower()
+            ).first()
+
+        if not recipient:
+            flash(
+                "The internal recipient account could not be found.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        if recipient.id == r.user_id:
+            flash(
+                "This internal transfer cannot be sent to the same account.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        if recipient.is_admin:
+            flash(
+                "This transfer cannot be sent to an admin account.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        if recipient.is_frozen:
+            flash(
+                "The recipient account is frozen. Unfreeze the account before approving this transfer.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        amount = Decimal(str(r.amount))
+
+        sender_wallet = r.wallet
+        recipient_wallet = wallet_for(recipient)
+
+        sender_old = wallet_amount(sender_wallet, currency)
+
+        if amount <= 0:
+            flash(
+                "The transfer amount must be greater than zero.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        if amount > sender_old:
+            flash(
+                f"The sender no longer has enough available {currency} balance.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        sender_new = sender_old - amount
+
+        recipient_old = wallet_amount(
+            recipient_wallet,
+            currency,
+        )
+
+        recipient_new = recipient_old + amount
+
+        set_wallet_amount(
+            sender_wallet,
+            currency,
+            sender_new,
+        )
+
+        set_wallet_amount(
+            recipient_wallet,
+            currency,
+            recipient_new,
+        )
+
+        r.status = "approved"
+        r.admin_id = current_user.id
+        r.reviewed_at = db.func.now()
+        r.payout_reference = (
+            request.form.get("payout_reference", "").strip()
+            or None
+        )
+
+        r.note = (
+            note
+            or f"{currency} sent to {recipient.email}"
+        )
+
+        db.session.add(
+            WalletTransaction(
+                wallet_id=sender_wallet.id,
+                user_id=r.user_id,
+                admin_id=current_user.id,
+                amount=amount,
+                currency=currency,
+                transaction_type="debit",
+                transfer_type="internal transfer",
+                description=r.note,
+                balance_after=sender_new,
+                external_reference=ref("SND"),
+            )
+        )
+
+        db.session.add(
+            WalletTransaction(
+                wallet_id=recipient_wallet.id,
+                user_id=recipient.id,
+                admin_id=current_user.id,
+                amount=amount,
+                currency=currency,
+                transaction_type="credit",
+                transfer_type="internal transfer",
+                description=(
+                    f"Received {format_crypto_amount(amount)} "
+                    f"{currency} from {r.user.email}"
+                ),
+                balance_after=recipient_new,
+                external_reference=ref("SND"),
+            )
+        )
+
+        db.session.commit()
+
+        socketio.emit(
+            "send_approved",
+            {
+                "request_id": r.id,
+                "message": r.note,
+            },
+            room=f"chat_{r.user_id}",
+        )
+
+        socketio.emit(
+            "send_received",
+            {
+                "request_id": r.id,
+                "message": (
+                    f"You received "
+                    f"{format_crypto_amount(amount)} "
+                    f"{currency} from {r.user.email}."
+                ),
+            },
+            room=f"chat_{recipient.id}",
+        )
+
+        flash(
+            "Internal transfer approved and the recipient has been credited.",
+            "success",
+        )
+
+        return redirect(url_for("admin_dashboard"))
+
+    if action == "approve" and method == "wallet":
+        payout_reference = (
+            request.form.get("payout_reference", "").strip()
+        )
+
+        if len(payout_reference) < 3 or len(payout_reference) > 128:
+            flash(
+                "Enter the wallet transfer confirmation/reference before approving.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        amount = Decimal(str(r.amount))
 
         w = r.wallet
         old = wallet_amount(w, currency)
-        if amount > old:
-            flash(f"Withdrawal cannot be completed because the user no longer has enough available {currency} balance.", "error")
+
+        if amount <= 0:
+            flash(
+                "The transfer amount must be greater than zero.",
+                "error",
+            )
             return redirect(url_for("admin_dashboard"))
+
+        if amount > old:
+            flash(
+                f"The sender no longer has enough available {currency} balance.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
         new = old - amount
-        set_wallet_amount(w, currency, new)
-        r.amount = amount
-        r.currency = currency
+
+        set_wallet_amount(
+            w,
+            currency,
+            new,
+        )
+
         r.status = "approved"
         r.admin_id = current_user.id
         r.reviewed_at = db.func.now()
         r.payout_reference = payout_reference
-        if method == "bitcoin":
-            r.payout_txid = payout_txid
-            r.payout_reference = None
-            r.note = note or "Bitcoin withdrawal completed"
-        else:
-            r.note = note or (f"{currency} withdrawal completed" if method != "card" else "USD card payout completed")
-        tx_description = r.note
+        r.note = (
+            note
+            or f"{currency} wallet transfer completed"
+        )
+
         db.session.add(
             WalletTransaction(
                 wallet_id=w.id,
@@ -1624,28 +1621,202 @@ def review_withdrawal(withdrawal_id):
                 amount=amount,
                 currency=currency,
                 transaction_type="debit",
-                transfer_type="bank transfer" if method == "card" else "crypto",
+                transfer_type="crypto",
+                description=r.note,
+                balance_after=new,
+                external_reference=ref("SND"),
+            )
+        )
+
+        db.session.commit()
+
+        socketio.emit(
+            "send_approved",
+            {
+                "request_id": r.id,
+                "message": r.note,
+            },
+            room=f"chat_{r.user_id}",
+        )
+
+        flash(
+            f"{currency} wallet transfer approved and debited.",
+            "success",
+        )
+
+        return redirect(url_for("admin_dashboard"))
+
+    if action == "approve":
+        if method == "bitcoin":
+            payout_txid = (
+                request.form.get("payout_txid", "").strip()
+            )
+
+            if len(payout_txid) < 20 or len(payout_txid) > 128:
+                flash(
+                    "Enter the Bitcoin payout TXID after sending the BTC.",
+                    "error",
+                )
+                return redirect(url_for("admin_dashboard"))
+
+            payout_reference = None
+            amount = Decimal(str(r.amount))
+
+        elif method == "card":
+            payout_reference = (
+                request.form.get("payout_reference", "").strip()
+            )
+
+            if len(payout_reference) < 3 or len(payout_reference) > 128:
+                flash(
+                    "Enter the transfer confirmation/reference after completing the payout.",
+                    "error",
+                )
+                return redirect(url_for("admin_dashboard"))
+
+            try:
+                amount = parse_btc(
+                    request.form.get("debit_btc_amount", "")
+                )
+            except ValueError as exc:
+                flash(
+                    f"Enter the BTC amount to debit after the USD transfer: {exc}",
+                    "error",
+                )
+                return redirect(url_for("admin_dashboard"))
+
+            currency = "BTC"
+
+        else:
+            payout_reference = (
+                request.form.get("payout_reference", "").strip()
+            )
+
+            if len(payout_reference) < 3 or len(payout_reference) > 128:
+                flash(
+                    "Enter the transfer confirmation/reference after completing the crypto payout.",
+                    "error",
+                )
+                return redirect(url_for("admin_dashboard"))
+
+            if (
+                method == "ethereum"
+                and Decimal(str(r.amount or 0)) == Decimal("0")
+                and r.usd_amount is not None
+            ):
+                amount = Decimal(str(r.usd_amount))
+            else:
+                amount = Decimal(str(r.amount))
+
+        w = r.wallet
+        old = wallet_amount(w, currency)
+
+        if amount <= 0:
+            flash(
+                "The withdrawal amount must be greater than zero.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        if amount > old:
+            flash(
+                f"Withdrawal cannot be completed because the user no longer has enough available {currency} balance.",
+                "error",
+            )
+            return redirect(url_for("admin_dashboard"))
+
+        new = old - amount
+
+        set_wallet_amount(
+            w,
+            currency,
+            new,
+        )
+
+        r.amount = amount
+        r.currency = currency
+        r.status = "approved"
+        r.admin_id = current_user.id
+        r.reviewed_at = db.func.now()
+        r.payout_reference = payout_reference
+
+        if method == "bitcoin":
+            r.payout_txid = payout_txid
+            r.payout_reference = None
+            r.note = (
+                note
+                or "Bitcoin withdrawal completed"
+            )
+        else:
+            r.note = (
+                note
+                or (
+                    f"{currency} withdrawal completed"
+                    if method != "card"
+                    else "USD card payout completed"
+                )
+            )
+
+        tx_description = r.note
+
+        db.session.add(
+            WalletTransaction(
+                wallet_id=w.id,
+                user_id=r.user_id,
+                admin_id=current_user.id,
+                amount=amount,
+                currency=currency,
+                transaction_type="debit",
+                transfer_type=(
+                    "bank transfer"
+                    if method == "card"
+                    else "crypto"
+                ),
                 description=tx_description,
                 balance_after=new,
                 external_reference=ref("WDR"),
             )
         )
+
         db.session.commit()
+
         socketio.emit(
             "withdrawal_approved",
-            {"withdrawal_id": r.id, "url": url_for("withdrawal_success", withdrawal_id=r.id)},
+            {
+                "withdrawal_id": r.id,
+                "url": url_for(
+                    "withdrawal_success",
+                    withdrawal_id=r.id,
+                ),
+            },
             room=f"chat_{r.user_id}",
         )
-        flash(f"{currency} withdrawal marked complete. The request has been removed from the pending queue.", "success")
-    elif action == "reject":
+
+        flash(
+            f"{currency} withdrawal marked complete. The request has been removed from the pending queue.",
+            "success",
+        )
+
+        return redirect(url_for("admin_dashboard"))
+
+    if action == "reject":
         if not rejection_reason:
-            flash("Enter a reason for rejecting the withdrawal so it appears in the user's statement history.", "error")
+            flash(
+                "Enter a reason for rejecting the withdrawal so it appears in the user's statement history.",
+                "error",
+            )
             return redirect(url_for("admin_dashboard"))
+
         r.status = "rejected"
         r.admin_id = current_user.id
         r.note = rejection_reason
         r.reviewed_at = db.func.now()
-        current_balance = wallet_amount(r.wallet, currency)
+
+        current_balance = wallet_amount(
+            r.wallet,
+            currency,
+        )
+
         db.session.add(
             WalletTransaction(
                 wallet_id=r.wallet_id,
@@ -1654,21 +1825,45 @@ def review_withdrawal(withdrawal_id):
                 amount=Decimal("0.00000000"),
                 currency=currency,
                 transaction_type="rejected",
-                transfer_type="bank transfer" if method == "card" else "crypto",
-                description=f"{'Send request' if method in ('internal_email', 'wallet') else 'Withdrawal'} rejected: {rejection_reason}",
+                transfer_type=(
+                    "bank transfer"
+                    if method == "card"
+                    else (
+                        "internal transfer"
+                        if method in ("internal_email", "wallet")
+                        else "crypto"
+                    )
+                ),
+                description=(
+                    "Send request rejected: "
+                    f"{rejection_reason}"
+                    if method in ("internal_email", "wallet")
+                    else f"Withdrawal rejected: {rejection_reason}"
+                ),
                 balance_after=current_balance,
                 external_reference=ref("WDR"),
             )
         )
+
         db.session.commit()
+
         socketio.emit(
             "withdrawal_rejected",
-            {"withdrawal_id": r.id, "reason": rejection_reason},
+            {
+                "withdrawal_id": r.id,
+                "reason": rejection_reason,
+            },
             room=f"chat_{r.user_id}",
         )
-        flash("Withdrawal rejected. The rejection reason has been added to the user's statements.", "success")
-    else:
-        flash("Invalid review action.", "error")
+
+        flash(
+            "Withdrawal rejected. The rejection reason has been added to the user's statements.",
+            "success",
+        )
+
+        return redirect(url_for("admin_dashboard"))
+
+    flash("Invalid review action.", "error")
     return redirect(url_for("admin_dashboard"))
 
 @app.route("/admin/user/<int:user_id>/freeze", methods=["POST"])
