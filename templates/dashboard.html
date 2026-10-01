@@ -117,37 +117,109 @@ function drawMarketChart(canvas,points,rising){
 function formatMarketPrice(n){
   return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:n>=100?2:n>=1?3:6}).format(n);
 }
-async function loadCryptoMarket(){
-  const status=document.getElementById('market-status');
-  try{
-    const ids=marketCoins.map(c=>c.id).join(',');
-    const r=await fetch('{{ url_for('crypto_market') }}');
-    if(!r.ok)throw new Error('market request failed');
-    const data=await r.json();
-    data.forEach(coin=>{
-      const card=document.querySelector('.market-card[data-coin="'+coin.id+'"]'); if(!card)return;
-      const change=Number(coin.price_change_percentage_24h||0);
-      const changeEl=card.querySelector('.market-change'),priceEl=card.querySelector('.market-price');
-      changeEl.classList.remove('loading');priceEl.classList.remove('loading');
-      changeEl.textContent=(change>=0?'+':'')+change.toFixed(2)+'%';
-      changeEl.classList.toggle('up',change>=0);changeEl.classList.toggle('down',change<0);
-      priceEl.textContent=formatMarketPrice(Number(coin.current_price||0));
-      drawMarketChart(document.getElementById('chart-'+coin.id),(coin.sparkline_in_7d&&coin.sparkline_in_7d.price)||[],change>=0);
+async function loadCryptoMarket() {
+  const status = document.getElementById('market-status');
+
+  try {
+    const r = await fetch('{{ url_for("crypto_market") }}', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Accept': 'application/json'
+      }
     });
-    if(status)status.textContent='Live market data · Updated just now · Refreshes every 60 seconds';
-  }catch(e){
-    document.querySelectorAll('.market-card').forEach(card=>{
-      const changeEl=card.querySelector('.market-change'),priceEl=card.querySelector('.market-price');
-      if(changeEl && changeEl.classList.contains('loading')){changeEl.classList.remove('loading');changeEl.textContent='Unavailable';}
-      if(priceEl && priceEl.classList.contains('loading')){priceEl.classList.remove('loading');priceEl.textContent='Unavailable';}
+
+    if (!r.ok) {
+      throw new Error('Market request failed: ' + r.status);
+    }
+
+    const data = await r.json();
+
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid market response');
+    }
+
+    data.forEach(coin => {
+      const coinId = coin.id;
+
+      // Your cards use data-coin="bitcoin", data-coin="ethereum", etc.
+      const card = document.querySelector(
+        `.market-card[data-coin="${coinId}"]`
+      );
+
+      if (!card) return;
+
+      const priceEl = card.querySelector('.market-price');
+      const changeEl = card.querySelector('.market-change');
+      const canvas = card.querySelector('.market-chart');
+
+      const price = Number(coin.current_price);
+      const change = Number(coin.price_change_percentage_24h);
+
+      // Update price
+      if (priceEl && Number.isFinite(price)) {
+        priceEl.textContent = formatMarketPrice(price);
+        priceEl.classList.remove('loading');
+      }
+
+      // Update 24h change
+      if (changeEl && Number.isFinite(change)) {
+        const sign = change >= 0 ? '+' : '';
+
+        changeEl.textContent =
+          sign + change.toFixed(2) + '%';
+
+        changeEl.classList.remove('loading');
+        changeEl.classList.toggle('positive', change >= 0);
+        changeEl.classList.toggle('negative', change < 0);
+      }
+
+      // Update chart
+      if (canvas) {
+        const prices =
+          coin.sparkline_in_7d &&
+          Array.isArray(coin.sparkline_in_7d.price)
+            ? coin.sparkline_in_7d.price
+            : [];
+
+        if (prices.length >= 2) {
+          drawMarketChart(
+            canvas,
+            prices,
+            Number.isFinite(change) ? change >= 0 : true
+          );
+        }
+      }
     });
-    if(status)status.textContent='Live market data is temporarily unavailable. Please try again shortly.';
+
+    if (status) {
+      status.textContent =
+        'Prices updated automatically · ' +
+        new Date().toLocaleTimeString();
+    }
+
+  } catch (error) {
+    console.error('Crypto market refresh failed:', error);
+
+    if (status) {
+      status.textContent =
+        'Live market data temporarily unavailable. Retrying automatically…';
+    }
   }
 }
+
+
+// Refresh every 60 seconds.
+// The backend itself caches market data for approximately 55 seconds.
+const CRYPTO_REFRESH_INTERVAL = 60 * 1000;
+
+
+// Load immediately when dashboard opens.
 loadCryptoMarket();
-setInterval(loadCryptoMarket,60000);
-window.addEventListener('resize',()=>{document.querySelectorAll('.market-card').forEach(card=>{const id=card.dataset.coin;});loadCryptoMarket();});
-</script><script>
+
+
+// Refresh all seven prices and charts automatically.
+setInterval(loadCryptoMarket, CRYPTO_REFRESH_INTERVAL);</script><script>
 function toggleBalance(){const hidden=document.body.classList.toggle("balance-hidden");const eye=document.getElementById("balance-eye");if(eye){eye.textContent=hidden?"🙈":"👁";eye.setAttribute("aria-label",hidden?"Show balance":"Hide balance");eye.title=hidden?"Show balance":"Hide balance";}}
 const walletBalances={{ wallet_balances|tojson }};
 const cryptoMeta={
