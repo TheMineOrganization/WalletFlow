@@ -593,67 +593,183 @@ def _market_from_coingecko():
 @app.route("/api/crypto-market")
 @login_required
 def crypto_market():
-    """Return cached live market data, with a Binance fallback for chart reliability."""
+    """Return live crypto market data with multiple fallbacks."""
     import time
+
     now = time.monotonic()
+
+    # Use fresh cached data first.
     with _market_cache_lock:
         cached = _market_cache.get("data")
-        if cached and now - _market_cache.get("timestamp", 0) < MARKET_CACHE_SECONDS:
-            return jsonify(cached)
+        cached_at = _market_cache.get("timestamp", 0)
 
+    if cached and now - cached_at < MARKET_CACHE_SECONDS:
+        return jsonify(cached)
+
+    # ---------------------------------------------------------
+    # 1. PRIMARY SOURCE: CoinGecko
+    # ---------------------------------------------------------
     try:
         data = _market_from_coingecko()
-    except (requests.RequestException, ValueError) as exc:
-        app.logger.warning("CoinGecko market request failed; using Binance fallback: %s", exc)
-        try:
-            # Binance provides public spot ticker and candlestick endpoints.
-            pairs = {
-                "bitcoin": "BTCUSDT", "ethereum": "ETHUSDT", "solana": "SOLUSDT",
-                "binancecoin": "BNBUSDT", "ripple": "XRPUSDT", "dogecoin": "DOGEUSDT",
-                "cardano": "ADAUSDT",
-            }
-            tickers = requests.get(
-                "https://api.binance.com/api/v3/ticker/24hr",
-                params={"symbols": json.dumps(list(pairs.values()), separators=(",", ":"))},
-                timeout=12,
-                headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
-            )
-            tickers.raise_for_status()
-            ticker_by_symbol = {row["symbol"]: row for row in tickers.json()}
-            data = []
-            for coin_id, symbol in pairs.items():
-                ticker = ticker_by_symbol.get(symbol)
-                if not ticker:
-                    continue
+
+        with _market_cache_lock:
+            _market_cache["timestamp"] = now
+            _market_cache["data"] = data
+
+        return jsonify(data)
+
+    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+        app.logger.warning(
+            "CoinGecko market request failed: %s",
+            exc
+        )
+
+    # ---------------------------------------------------------
+    # 2. FALLBACK: Binance
+    # ---------------------------------------------------------
+    try:
+        pairs = {
+            "bitcoin": "BTCUSDT",
+            "ethereum": "ETHUSDT",
+            "solana": "SOLUSDT",
+            "binancecoin": "BNBUSDT",
+            "ripple": "XRPUSDT",
+            "dogecoin": "DOGEUSDT",
+            "cardano": "ADAUSDT",
+        }
+
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "WalletFlow/1.0",
+        }
+
+        tickers = requests.get(
+            "https://api.binance.com/api/v3/ticker/24hr",
+            params={
+                "symbols": json.dumps(
+                    list(pairs.values()),
+                    separators=(",", ":")
+                )
+            },
+            timeout=8,
+            headers=headers,
+        )
+
+        tickers.raise_for_status()
+
+        ticker_json = tickers.json()
+
+        if not isinstance(ticker_json, list):
+            raise ValueError("Binance returned invalid ticker data")
+
+        ticker_by_symbol = {
+            row["symbol"]: row
+            for row in ticker_json
+            if isinstance(row, dict) and row.get("symbol")
+        }
+
+        data = []
+
+        for coin_id, symbol in pairs.items():
+            ticker = ticker_by_symbol.get(symbol)
+
+            if not ticker:
+                continue
+
+            try:
+                current_price = float(ticker["lastPrice"])
+                change_24h = float(ticker["priceChangePercent"])
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            prices = []
+
+            # Get chart history. If history fails, we can still
+            # return the current price and 24h change.
+            try:
                 klines = requests.get(
                     "https://api.binance.com/api/v3/klines",
-                    params={"symbol": symbol, "interval": "4h", "limit": 42},
-                    timeout=12,
-                    headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
+                    params={
+                        "symbol": symbol,
+                        "interval": "4h",
+                        "limit": 42,
+                    },
+                    timeout=8,
+                    headers=headers,
                 )
+
                 klines.raise_for_status()
-                prices = [float(row[4]) for row in klines.json() if len(row) > 4]
-                data.append({
-                    "id": coin_id,
-                    "current_price": float(ticker["lastPrice"]),
-                    "price_change_percentage_24h": float(ticker["priceChangePercent"]),
-                    "sparkline_in_7d": {"price": prices},
-                })
-            if not data:
-                raise ValueError("Binance returned no market rows")
-        except (requests.RequestException, ValueError, KeyError, TypeError) as fallback_exc:
-            app.logger.warning("Binance market fallback failed: %s", fallback_exc)
+
+                rows = klines.json()
+
+                if isinstance(rows, list):
+                    prices = [
+                        float(row[4])
+                        for row in rows
+                        if isinstance(row, list)
+                        and len(row) > 4
+                    ]
+
+            except (
+                requests.RequestException,
+                ValueError,
+                TypeError,
+                KeyError,
+            ) as chart_exc:
+                app.logger.warning(
+                    "Binance chart history failed for %s: %s",
+                    symbol,
+                    chart_exc,
+                )
+
+            # Make sure the chart has at least the current price.
+            if not prices:
+                prices = [current_price]
+
+            data.append({
+                "id": coin_id,
+                "current_price": current_price,
+                "price_change_percentage_24h": change_24h,
+                "sparkline_in_7d": {
+                    "price": prices
+                },
+            })
+
+        if data:
             with _market_cache_lock:
-                cached = _market_cache.get("data")
-            if cached:
-                return jsonify(cached)
-            return jsonify({"error": "Live market data is temporarily unavailable."}), 502
+                _market_cache["timestamp"] = now
+                _market_cache["data"] = data
 
+            return jsonify(data)
+
+        raise ValueError("Binance returned no usable market data")
+
+    except (
+        requests.RequestException,
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        app.logger.warning(
+            "Binance market fallback failed: %s",
+            exc
+        )
+
+    # ---------------------------------------------------------
+    # 3. FALLBACK: previously cached market data
+    # ---------------------------------------------------------
     with _market_cache_lock:
-        _market_cache["timestamp"] = now
-        _market_cache["data"] = data
-    return jsonify(data)
+        cached = _market_cache.get("data")
 
+    if cached:
+        return jsonify(cached)
+
+    # ---------------------------------------------------------
+    # 4. Nothing available
+    # ---------------------------------------------------------
+    return jsonify({
+        "error": "Live market data is temporarily unavailable."
+    }), 502
 
 def customer_statement_rows(user_id, limit=None, query=None):
     """Build customer-facing statements without creating duplicate DB transactions.
