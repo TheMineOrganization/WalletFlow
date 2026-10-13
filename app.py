@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from functools import wraps
 from datetime import datetime
 from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from types import SimpleNamespace
 
 from authlib.integrations.flask_client import OAuth
@@ -620,25 +621,39 @@ def crypto_market():
             )
             tickers.raise_for_status()
             ticker_by_symbol = {row["symbol"]: row for row in tickers.json()}
-            data = []
-            for coin_id, symbol in pairs.items():
-                ticker = ticker_by_symbol.get(symbol)
-                if not ticker:
-                    continue
-                klines = requests.get(
-                    "https://api.binance.com/api/v3/klines",
-                    params={"symbol": symbol, "interval": "4h", "limit": 42},
-                    timeout=12,
-                    headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
-                )
-                klines.raise_for_status()
-                prices = [float(row[4]) for row in klines.json() if len(row) > 4]
-                data.append({
-                    "id": coin_id,
-                    "current_price": float(ticker["lastPrice"]),
-                    "price_change_percentage_24h": float(ticker["priceChangePercent"]),
-                    "sparkline_in_7d": {"price": prices},
-                })
+            # Fetch candle history concurrently so one slow symbol cannot leave
+            # the dashboard waiting on seven sequential network requests.
+            def fetch_prices(symbol):
+                try:
+                    response = requests.get(
+                        "https://api.binance.com/api/v3/klines",
+                        params={"symbol": symbol, "interval": "4h", "limit": 42},
+                        timeout=5,
+                        headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
+                    )
+                    response.raise_for_status()
+                    return [float(row[4]) for row in response.json() if len(row) > 4]
+                except (requests.RequestException, ValueError, TypeError):
+                    return []
+
+            with ThreadPoolExecutor(max_workers=7) as pool:
+                candle_futures = {symbol: pool.submit(fetch_prices, symbol) for symbol in pairs.values()}
+                data = []
+                for coin_id, symbol in pairs.items():
+                    ticker = ticker_by_symbol.get(symbol)
+                    if not ticker:
+                        continue
+                    prices = candle_futures[symbol].result()
+                    # Keep the live price/change visible even if candle history is unavailable.
+                    if len(prices) < 2:
+                        current = float(ticker["lastPrice"])
+                        prices = [current, current]
+                    data.append({
+                        "id": coin_id,
+                        "current_price": float(ticker["lastPrice"]),
+                        "price_change_percentage_24h": float(ticker["priceChangePercent"]),
+                        "sparkline_in_7d": {"price": prices},
+                    })
             if not data:
                 raise ValueError("Binance returned no market rows")
         except (requests.RequestException, ValueError, KeyError, TypeError) as fallback_exc:

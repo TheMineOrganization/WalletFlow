@@ -141,7 +141,7 @@ async function loadCryptoMarket() {
   if (marketRefreshInProgress) return;
   marketRefreshInProgress = true;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
   try {
     const r = await fetch('{{ url_for("crypto_market") }}', {
       method: 'GET',
