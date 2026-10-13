@@ -101,32 +101,55 @@ const marketCoins=[
   {id:'cardano',name:'Cardano'}
 ];
 function drawMarketChart(canvas,points,rising){
-  if(!canvas||!points||points.length<2)return;
-  const rect=canvas.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
-  const w=Math.max(160,rect.width),h=74;
-  canvas.width=w*dpr; canvas.height=h*dpr;
-  const ctx=canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
-  const min=Math.min(...points),max=Math.max(...points),range=max-min||1;
+  if(!canvas || !Array.isArray(points)) return;
+  const values=points.map(Number).filter(v=>Number.isFinite(v)&&v>0);
+  if(values.length<2) return;
+  const rect=canvas.getBoundingClientRect();
+  const w=Math.max(160,Math.round(rect.width || canvas.parentElement?.clientWidth || 160));
+  const h=74, dpr=Math.max(1,window.devicePixelRatio||1);
+  canvas.width=Math.round(w*dpr);
+  canvas.height=Math.round(h*dpr);
+  canvas.style.height=h+'px';
+  const ctx=canvas.getContext('2d');
+  if(!ctx) return;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const min=Math.min(...values), max=Math.max(...values);
+  const range=max-min || Math.max(Math.abs(max)*0.001,1e-8);
   const pad=5;
+  const coords=values.map((v,i)=>({x:pad+i*(w-pad*2)/(values.length-1),y:h-pad-((v-min)/range)*(h-pad*2)}));
+  const stroke=rising?'#42e8ff':'#ff6b81';
+  const fill=ctx.createLinearGradient(0,0,0,h);
+  fill.addColorStop(0,rising?'rgba(66,232,255,.24)':'rgba(255,107,129,.22)');
+  fill.addColorStop(1,'rgba(0,0,0,0)');
   ctx.beginPath();
-  points.forEach((v,i)=>{const x=pad+i*(w-pad*2)/(points.length-1),y=h-pad-((v-min)/range)*(h-pad*2);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
-  ctx.strokeStyle=rising?'#42e8ff':'#ff6b81';ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
-  const lastX=w-pad,lastY=h-pad-((points[points.length-1]-min)/range)*(h-pad*2);
-  ctx.beginPath();ctx.arc(lastX,lastY,3,0,Math.PI*2);ctx.fillStyle=rising?'#42e8ff':'#ff6b81';ctx.fill();
+  coords.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+  ctx.lineTo(coords[coords.length-1].x,h); ctx.lineTo(coords[0].x,h); ctx.closePath();
+  ctx.fillStyle=fill; ctx.fill();
+  ctx.beginPath();
+  coords.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+  ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+  const last=coords[coords.length-1];
+  ctx.beginPath(); ctx.arc(last.x,last.y,3,0,Math.PI*2); ctx.fillStyle=stroke; ctx.fill();
 }
 function formatMarketPrice(n){
   return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:n>=100?2:n>=1?3:6}).format(n);
 }
+let marketRefreshInProgress = false;
 async function loadCryptoMarket() {
   const status = document.getElementById('market-status');
-
+  if (marketRefreshInProgress) return;
+  marketRefreshInProgress = true;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
     const r = await fetch('{{ url_for("crypto_market") }}', {
       method: 'GET',
       cache: 'no-store',
       headers: {
         'Accept': 'application/json'
-      }
+      },
+      signal: controller.signal
     });
 
     if (!r.ok) {
@@ -135,7 +158,7 @@ async function loadCryptoMarket() {
 
     const data = await r.json();
 
-    if (!Array.isArray(data)) {
+    if (!Array.isArray(data) || data.length === 0) {
       throw new Error('Invalid market response');
     }
 
@@ -200,11 +223,14 @@ async function loadCryptoMarket() {
 
   } catch (error) {
     console.error('Crypto market refresh failed:', error);
-
     if (status) {
-      status.textContent =
-        'Live market data temporarily unavailable. Retrying automatically…';
+      status.textContent = error.name === 'AbortError'
+        ? 'Market request timed out. Retrying automatically…'
+        : 'Live market data temporarily unavailable. Retrying automatically…';
     }
+  } finally {
+    clearTimeout(timeoutId);
+    marketRefreshInProgress = false;
   }
 }
 
