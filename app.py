@@ -88,7 +88,7 @@ CRYPTO_ASSETS = {
 CURRENCY_SYMBOL = "BTC"
 ADMIN_EMAILS = {"privateid1100@gmail.com", "cstones625@gmail.com"}
 COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", os.getenv("COINGECKO_DEMO_API_KEY", "")).strip()
-MARKET_CACHE_SECONDS = 55
+MARKET_CACHE_SECONDS = 60
 _market_cache = {"timestamp": 0.0, "data": None}
 _market_cache_lock = Lock()
 BTC_PLACES = Decimal("0.00000001")
@@ -594,7 +594,7 @@ def _market_from_coingecko():
 @app.route("/api/crypto-market")
 @login_required
 def crypto_market():
-    """Return cached live market data, with a Binance fallback for chart reliability."""
+    """Return cached market data, using Coinbase Exchange if CoinGecko is rate-limited."""
     import time
     now = time.monotonic()
     with _market_cache_lock:
@@ -602,72 +602,99 @@ def crypto_market():
         if cached and now - _market_cache.get("timestamp", 0) < MARKET_CACHE_SECONDS:
             return jsonify(cached)
 
+    # CoinGecko can return HTTP 429 when polled too frequently. Keep its request
+    # short and fall back to a separate public exchange API if it is unavailable.
     try:
         data = _market_from_coingecko()
-    except (requests.RequestException, ValueError) as exc:
-        app.logger.warning("CoinGecko market request failed; using Binance fallback: %s", exc)
-        try:
-            # Binance provides public spot ticker and candlestick endpoints.
-            pairs = {
-                "bitcoin": "BTCUSDT", "ethereum": "ETHUSDT", "solana": "SOLUSDT",
-                "binancecoin": "BNBUSDT", "ripple": "XRPUSDT", "dogecoin": "DOGEUSDT",
-                "cardano": "ADAUSDT",
-            }
-            tickers = requests.get(
-                "https://api.binance.com/api/v3/ticker/24hr",
-                params={"symbols": json.dumps(list(pairs.values()), separators=(",", ":"))},
-                timeout=12,
-                headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
-            )
-            tickers.raise_for_status()
-            ticker_by_symbol = {row["symbol"]: row for row in tickers.json()}
-            # Fetch candle history concurrently so one slow symbol cannot leave
-            # the dashboard waiting on seven sequential network requests.
-            def fetch_prices(symbol):
-                try:
-                    response = requests.get(
-                        "https://api.binance.com/api/v3/klines",
-                        params={"symbol": symbol, "interval": "4h", "limit": 42},
-                        timeout=5,
-                        headers={"Accept": "application/json", "User-Agent": "WalletFlow/1.0"},
-                    )
-                    response.raise_for_status()
-                    return [float(row[4]) for row in response.json() if len(row) > 4]
-                except (requests.RequestException, ValueError, TypeError):
-                    return []
-
-            with ThreadPoolExecutor(max_workers=7) as pool:
-                candle_futures = {symbol: pool.submit(fetch_prices, symbol) for symbol in pairs.values()}
-                data = []
-                for coin_id, symbol in pairs.items():
-                    ticker = ticker_by_symbol.get(symbol)
-                    if not ticker:
-                        continue
-                    prices = candle_futures[symbol].result()
-                    # Keep the live price/change visible even if candle history is unavailable.
-                    if len(prices) < 2:
-                        current = float(ticker["lastPrice"])
-                        prices = [current, current]
-                    data.append({
-                        "id": coin_id,
-                        "current_price": float(ticker["lastPrice"]),
-                        "price_change_percentage_24h": float(ticker["priceChangePercent"]),
-                        "sparkline_in_7d": {"price": prices},
-                    })
-            if not data:
-                raise ValueError("Binance returned no market rows")
-        except (requests.RequestException, ValueError, KeyError, TypeError) as fallback_exc:
-            app.logger.warning("Binance market fallback failed: %s", fallback_exc)
+        if isinstance(data, list) and data:
             with _market_cache_lock:
-                cached = _market_cache.get("data")
-            if cached:
-                return jsonify(cached)
-            return jsonify({"error": "Live market data is temporarily unavailable."}), 502
+                _market_cache["timestamp"] = now
+                _market_cache["data"] = data
+            return jsonify(data)
+    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+        app.logger.warning("CoinGecko market request failed; trying Coinbase Exchange: %s", exc)
 
+    # Coinbase Exchange public endpoints are independent of Binance and do not
+    # require an API key. Unsupported products are skipped rather than failing
+    # the entire market response (BNB-USD may not be available on every region).
+    products = {
+        "bitcoin": "BTC-USD",
+        "ethereum": "ETH-USD",
+        "solana": "SOL-USD",
+        "binancecoin": "BNB-USD",
+        "ripple": "XRP-USD",
+        "dogecoin": "DOGE-USD",
+        "cardano": "ADA-USD",
+    }
+    headers = {"Accept": "application/json", "User-Agent": "WalletFlow/1.0"}
+
+    def fetch_coin(coin_id, product_id):
+        try:
+            ticker_response = requests.get(
+                f"https://api.exchange.coinbase.com/products/{product_id}/ticker",
+                timeout=5,
+                headers=headers,
+            )
+            ticker_response.raise_for_status()
+            ticker = ticker_response.json()
+            current = float(ticker["price"])
+            if current <= 0:
+                return None
+            try:
+                candles_response = requests.get(
+                    f"https://api.exchange.coinbase.com/products/{product_id}/candles",
+                    params={"granularity": 21600, "limit": 42},
+                    timeout=5,
+                    headers=headers,
+                )
+                candles_response.raise_for_status()
+                candles = candles_response.json()
+                # Coinbase candle rows: [time, low, high, open, close, volume].
+                candles = sorted(
+                    (row for row in candles if isinstance(row, list) and len(row) >= 5),
+                    key=lambda row: row[0],
+                )
+                prices = [float(row[4]) for row in candles if float(row[4]) > 0]
+            except (requests.RequestException, ValueError, TypeError, KeyError, IndexError) as exc:
+                app.logger.info("Coinbase chart history unavailable for %s: %s", product_id, exc)
+                prices = []
+
+            try:
+                open_24h = float(ticker.get("open_24h") or 0)
+                change = ((current - open_24h) / open_24h * 100) if open_24h > 0 else 0.0
+            except (ValueError, TypeError):
+                change = 0.0
+            if len(prices) < 2:
+                prices = [current, current]
+            return {
+                "id": coin_id,
+                "current_price": current,
+                "price_change_percentage_24h": change,
+                "sparkline_in_7d": {"price": prices},
+            }
+        except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+            app.logger.info("Coinbase market data unavailable for %s: %s", product_id, exc)
+            return None
+
+    with ThreadPoolExecutor(max_workers=14) as pool:
+        futures = [pool.submit(fetch_coin, coin_id, product_id) for coin_id, product_id in products.items()]
+        data = [result for result in (future.result() for future in futures) if result]
+
+    if data:
+        with _market_cache_lock:
+            _market_cache["timestamp"] = now
+            _market_cache["data"] = data
+        return jsonify(data)
+
+    # If every provider is temporarily unavailable, prefer older known-good data
+    # to returning a blank dashboard.
     with _market_cache_lock:
-        _market_cache["timestamp"] = now
-        _market_cache["data"] = data
-    return jsonify(data)
+        cached = _market_cache.get("data")
+    if cached:
+        return jsonify(cached)
+
+    app.logger.error("CoinGecko and Coinbase Exchange market requests failed.")
+    return jsonify({"error": "Live market data is temporarily unavailable."}), 502
 
 
 def customer_statement_rows(user_id, limit=None, query=None):
